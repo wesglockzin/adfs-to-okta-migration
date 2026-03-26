@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADFS → Okta Migration Tool</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"/>
+    <style>
+        :root { font-size: 87.5%; }
+        main.container { max-width: 1400px; }
+
+        .env-switch {
+            display: flex;
+            background: var(--pico-card-background-color);
+            border-radius: var(--pico-border-radius);
+            overflow: hidden;
+            border: 1px solid var(--pico-muted-border-color);
+            margin-bottom: 0;
+        }
+        .env-switch label {
+            flex: 1; text-align: center; cursor: pointer;
+            margin-bottom: 0; font-weight: bold; padding: 0;
+        }
+        .env-switch input { display: none; }
+        .env-switch label span {
+            display: flex; align-items: center; justify-content: center;
+            width: 100%; height: 100%; padding: 0.75rem 1rem;
+            transition: background-color 0.2s, color 0.2s;
+        }
+        .env-switch input:checked + span {
+            background-color: var(--pico-primary-background);
+            color: var(--pico-primary-inverse);
+        }
+
+        .chip {
+            display: inline-flex; align-items: center; gap: 0.3rem;
+            padding: 0.15rem 0.55rem; border-radius: 999px;
+            background-color: var(--pico-muted-background-color);
+            border: 1px solid var(--pico-muted-border-color);
+            font-size: 0.85em; white-space: nowrap;
+        }
+        .chip-ok  { background-color: #e8f5e9; border-color: #a5d6a7; color: #1b5e20; }
+        .chip-bad { background-color: #ffebee; border-color: #ef9a9a; color: #b71c1c; }
+        .chip-warn{ background-color: #fff8e1; border-color: #ffe082; color: #7b5a00; }
+
+        #app-table, #session-table { font-size: 0.88em; }
+        #app-table th, #session-table th { white-space: nowrap; }
+        #app-table td, #session-table td { vertical-align: middle; }
+        #app-table input[type=checkbox] { margin: 0; }
+
+        .toolbar {
+            display: flex; align-items: center; gap: 1rem;
+            flex-wrap: wrap; margin-bottom: 0.75rem;
+        }
+        .toolbar label { margin: 0; font-weight: normal; display: flex; align-items: center; gap: 0.4rem; }
+
+        footer {
+            text-align: center; font-size: 0.9em; color: var(--pico-muted-color);
+            margin-top: 2rem; padding: 1rem 0 1.5rem;
+            border-top: 1px solid var(--pico-muted-border-color);
+        }
+        .hidden { display: none; }
+
+        /* ── Summary + filter bar ── */
+        .status-bar {
+            display: flex; align-items: center; gap: 0.5rem;
+            flex-wrap: wrap; margin-bottom: 0.75rem;
+        }
+        .status-bar .divider {
+            width: 1px; height: 1.2em;
+            background: var(--pico-muted-border-color);
+            margin: 0 0.25rem;
+        }
+        .filter-btn {
+            padding: 0.15rem 0.65rem; font-size: 0.82em; margin: 0;
+            border-radius: 999px; border: 1px solid #bbb;
+            background: #f0f0f0; cursor: pointer;
+            color: #333 !important; transition: background 0.15s, border-color 0.15s;
+        }
+        .filter-btn:hover { background: #e0e0e0; border-color: #999; }
+        .filter-btn.active-filter {
+            background: #1b6ca8 !important; border-color: #1b6ca8 !important;
+            color: #fff !important; font-weight: 600;
+        }
+
+    </style>
+</head>
+<body>
+<main class="container">
+
+    <hgroup>
+        <h1>ADFS &rarr; Okta Migration Tool</h1>
+        <p>Scan ADFS export folders and import as SAML 2.0 apps into Okta &mdash; v{{ version }}</p>
+    </hgroup>
+
+    <!-- ── Settings panel ── -->
+    <article style="padding-bottom:1rem">
+        <!-- Row 1: env + folder + scan -->
+        <div class="grid" style="grid-template-columns: auto 1fr auto; gap: 1rem; align-items: end; margin-bottom: 1rem;">
+
+            <fieldset style="margin:0">
+                <legend>Target Environment</legend>
+                <div class="env-switch">
+                    <label><input type="radio" name="env" value="dev" checked><span>DEV</span></label>
+                    <label><input type="radio" name="env" value="stg"><span>STG</span></label>
+                    <label><input type="radio" name="env" value="prod"><span>PROD</span></label>
+                </div>
+            </fieldset>
+
+            <label style="margin:0">
+                ADFS Export Folder
+                <div style="display:flex; gap:0.5rem; margin-bottom:0">
+                    <input type="text" id="input-dir" placeholder="/path/to/ADFS_Migration_Export_Folder"
+                           value="{{ default_dir }}" style="margin-bottom:0; flex:1">
+                    <button type="button" class="secondary" style="margin-bottom:0; white-space:nowrap"
+                            onclick="doBrowse()">Browse…</button>
+                </div>
+            </label>
+
+            <div style="display:flex; gap:0.5rem; align-items:flex-end;">
+                <button id="scan-btn" onclick="doScan()">Scan</button>
+            </div>
+        </div>
+
+        <!-- Row 2: auth policy + routing rule + import -->
+        <div style="display:flex; gap:1rem; align-items:flex-end; border-top:1px solid var(--pico-muted-border-color); padding-top:1rem;">
+            <label style="margin:0; min-width:220px;">
+                Auth Policy
+                <select id="policy-select" style="margin-bottom:0">
+                    <option value="">— None —</option>
+                </select>
+            </label>
+            <label style="margin:0; min-width:220px;">
+                IDP Routing Rule
+                <select id="routing-rule-select" style="margin-bottom:0">
+                    <option value="">— None —</option>
+                </select>
+            </label>
+            <div style="display:flex; align-items:flex-end; gap:0.75rem; padding-bottom:2px;">
+                <button id="import-btn" onclick="doImport()" style="margin:0">Import Selected</button>
+                <a href="/logs" target="_blank" class="secondary outline" role="button"
+                   style="margin:0; padding:0.55rem 0.9rem; font-size:0.9em; white-space:nowrap;">Import History ↗</a>
+                <span id="import-status" style="color:var(--pico-muted-color); font-size:0.9em;"></span>
+            </div>
+        </div>
+    </article>
+
+    <!-- ── Error banner ── -->
+    <article id="error-banner" class="hidden" style="background:#ffebee; color:#b71c1c;"></article>
+
+    <!-- ── Results ── -->
+    <section id="results-section" class="hidden">
+
+        <!-- Status bar: pills + filters + CSV export -->
+        <div class="status-bar">
+            <div id="summary-pills" style="display:contents"></div>
+            <div class="divider"></div>
+            <button class="filter-btn active-filter" data-filter="all"     onclick="setFilter('all')">All</button>
+            <button class="filter-btn"               data-filter="missing"  onclick="setFilter('missing')">Missing</button>
+            <button class="filter-btn"               data-filter="in_okta"  onclick="setFilter('in_okta')">In Okta</button>
+            <button class="filter-btn"               data-filter="review"   onclick="setFilter('review')">Review Flag</button>
+            <button class="filter-btn"               data-filter="enc_cert" onclick="setFilter('enc_cert')">Enc Cert</button>
+            <span id="filter-count" style="font-size:0.82em; color:var(--pico-muted-color)"></span>
+            <div style="margin-left:auto; display:flex; gap:0.5rem;">
+                <button class="secondary outline" style="margin:0; padding:0.2rem 0.7rem; font-size:0.82em" onclick="exportCSV()">Export CSV</button>
+                <button id="analyze-btn" class="outline" style="margin:0; padding:0.2rem 0.7rem; font-size:0.82em;" onclick="doAnalyze()">&#x2728; AI Analysis</button>
+            </div>
+        </div>
+
+        <!-- ── AI Analysis Panel ── -->
+        <article id="ai-panel" class="hidden" style="margin-bottom:1rem; padding:1rem 1.25rem; background:var(--pico-card-background-color);">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem;">
+                <strong style="font-size:0.9em;">&#x2728; AI Migration Analysis</strong>
+                <button class="secondary outline" style="margin:0; padding:0.1rem 0.6rem; font-size:0.8em;" onclick="closeAiPanel()">&#x2715;</button>
+            </div>
+            <div id="ai-output" style="font-size:0.87em; line-height:1.65; max-height:520px; overflow-y:auto; color:var(--pico-color);">
+                <!-- Sections rendered by JS -->
+                <div id="ai-s1"></div>
+                <div id="ai-s2"></div>
+                <div id="ai-s3"></div>
+                <div id="ai-s4"></div>
+                <div id="ai-s5"></div>
+                <div id="ai-s6"></div>
+            </div>
+        </article>
+
+        <!-- Toolbar -->
+        <div class="toolbar">
+            <label>
+                <input type="checkbox" id="select-all" onchange="toggleSelectAll(this)">
+                Select all missing
+            </label>
+            <label>
+                <input type="checkbox" id="update-existing" onchange="onUpdateExistingChange()">
+                Update existing (policy &amp; groups)
+            </label>
+            <span style="margin-left:auto; color:var(--pico-muted-color)" id="selected-count"></span>
+        </div>
+
+        <div style="overflow-x:auto">
+            <table id="app-table">
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>App Name</th>
+                        <th>ACS&nbsp;Endpoints</th>
+                        <th>Enc&nbsp;Cert</th>
+                        <th>Sign&nbsp;Cert</th>
+                        <th>Group Assignment</th>
+                        <th>Review&nbsp;Flag</th>
+                        <th>In&nbsp;Okta</th>
+                        <th>Auth&nbsp;Policy</th>
+                        <th>Routing&nbsp;Rule</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="app-tbody"></tbody>
+            </table>
+        </div>
+
+        <!-- ── Last Import Session ── -->
+        <section id="session-section" class="hidden" style="margin-top:1.5rem">
+            <hr style="margin-bottom:1rem">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.75rem">
+                <strong>Last Import Session</strong>
+                <div id="session-chips" style="display:flex; gap:0.75rem; flex-wrap:wrap;"></div>
+            </div>
+            <div style="overflow-x:auto">
+                <table id="session-table">
+                    <thead>
+                        <tr>
+                            <th>App Name</th>
+                            <th>Result</th>
+                            <th>Okta ID</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody id="session-tbody"></tbody>
+                </table>
+            </div>
+        </section>
+
+    </section>
+
+    <footer>ADFS &rarr; Okta Migration Tool &mdash; v1.7.0 &mdash; Local use only</footer>
+
+</main>
+
+<script>
+    // ── State ──────────────────────────────────────────────────────────────
+    let scanData = [];
+    let sessionResults = [];  // [{app, status, okta_id, msg}]
+    let sessionSummary = null;
+    let activeFilter = 'all';
+
+    const $ = id => document.getElementById(id);
+
+    function getEnv() {
+        return document.querySelector('input[name="env"]:checked').value;
+    }
+    function getInputDir() {
+        return $('input-dir').value.trim();
+    }
+
+    // Restore input-dir from localStorage
+    const savedDir = localStorage.getItem('adfs_export_dir');
+    if (savedDir && !$('input-dir').value) $('input-dir').value = savedDir;
+    $('input-dir').addEventListener('change', () => {
+        localStorage.setItem('adfs_export_dir', $('input-dir').value.trim());
+    });
+
+    // ── Auth Policy dropdown ────────────────────────────────────────────────
+    async function loadPolicies(env) {
+        const sel = $('policy-select');
+        sel.innerHTML = '<option value="">Loading…</option>';
+        try {
+            const resp = await fetch(`/api/policies?env=${env}`);
+            const data = await resp.json();
+            if (!resp.ok) { sel.innerHTML = '<option value="">— unavailable —</option>'; return; }
+            const saved = localStorage.getItem(`policy_${env}`) || '';
+            sel.innerHTML = '<option value="">— None —</option>' +
+                data.map(p => `<option value="${p.id}"${p.id === saved ? ' selected' : ''}>${p.name}</option>`).join('');
+        } catch {
+            sel.innerHTML = '<option value="">— unavailable —</option>';
+        }
+    }
+
+    $('policy-select').addEventListener('change', () => {
+        localStorage.setItem(`policy_${getEnv()}`, $('policy-select').value);
+    });
+
+    // ── IDP Routing Rule dropdown ───────────────────────────────────────────
+    async function loadRoutingRules(env) {
+        const sel = $('routing-rule-select');
+        sel.innerHTML = '<option value="">Loading…</option>';
+        try {
+            const resp = await fetch(`/api/routing-rules?env=${env}`);
+            const data = await resp.json();
+            if (!resp.ok) { sel.innerHTML = '<option value="">— unavailable —</option>'; return; }
+            const saved = localStorage.getItem(`routing_rule_${env}`) || '';
+            sel.innerHTML = '<option value="">— None —</option>' +
+                data.map(r => {
+                    const val = `${r.id}:${r.policy_id}`;
+                    return `<option value="${val}"${val === saved ? ' selected' : ''}>${r.name}</option>`;
+                }).join('');
+        } catch {
+            sel.innerHTML = '<option value="">— unavailable —</option>';
+        }
+    }
+
+    $('routing-rule-select').addEventListener('change', () => {
+        localStorage.setItem(`routing_rule_${getEnv()}`, $('routing-rule-select').value);
+    });
+
+    document.querySelectorAll('input[name="env"]').forEach(r => {
+        r.addEventListener('change', () => {
+            loadPolicies(getEnv());
+            loadRoutingRules(getEnv());
+        });
+    });
+
+    loadPolicies(getEnv());
+    loadRoutingRules(getEnv());
+
+    // ── Browse ─────────────────────────────────────────────────────────────
+    async function doBrowse() {
+        const resp = await fetch('/api/browse');
+        const data = await resp.json();
+        if (data.path) {
+            $('input-dir').value = data.path;
+            localStorage.setItem('adfs_export_dir', data.path);
+        }
+    }
+
+    // ── Scan ───────────────────────────────────────────────────────────────
+    async function doScan() {
+        const env = getEnv();
+        const dir = getInputDir();
+        if (!dir) { showError('Please enter the ADFS export folder path.'); return; }
+
+        $('scan-btn').setAttribute('aria-busy', 'true');
+        $('scan-btn').disabled = true;
+        $('error-banner').classList.add('hidden');
+        $('results-section').classList.add('hidden');
+        localStorage.setItem('adfs_export_dir', dir);
+
+        try {
+            const resp = await fetch(`/api/scan?env=${env}&input_dir=${encodeURIComponent(dir)}`);
+            const data = await resp.json();
+            if (!resp.ok) { showError(data.error || 'Scan failed'); return; }
+            scanData = data;
+            renderTable();
+            $('results-section').classList.remove('hidden');
+        } catch (e) {
+            showError('Network error: ' + e.message);
+        } finally {
+            $('scan-btn').removeAttribute('aria-busy');
+            $('scan-btn').disabled = false;
+        }
+    }
+
+    function onUpdateExistingChange() {
+        renderTable();
+    }
+
+    // ── Filter ─────────────────────────────────────────────────────────────
+    function setFilter(f) {
+        activeFilter = f;
+        document.querySelectorAll('.filter-btn[data-filter]').forEach(b => {
+            b.classList.toggle('active-filter', b.dataset.filter === f);
+        });
+        renderTable();
+    }
+
+    function filteredScanData() {
+        if (activeFilter === 'missing')  return scanData.filter(r => !r.in_okta && !r.parse_error);
+        if (activeFilter === 'in_okta')  return scanData.filter(r => r.in_okta);
+        if (activeFilter === 'review')   return scanData.filter(r => r.requires_review);
+        if (activeFilter === 'enc_cert') return scanData.filter(r => r.has_enc_cert);
+        return scanData;
+    }
+
+    // ── Import Table ───────────────────────────────────────────────────────
+    function renderTable() {
+        const updateExisting = $('update-existing').checked;
+        const tbody = $('app-tbody');
+        tbody.innerHTML = '';
+
+        const rows = filteredScanData();
+
+        for (const row of rows) {
+            const tr = document.createElement('tr');
+            const canImport = (!row.in_okta || updateExisting) && !row.parse_error;
+
+            const tdCb = document.createElement('td');
+            if (canImport) {
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.value = row.folder;
+                cb.checked = false;
+                cb.className = 'app-cb';
+                cb.addEventListener('change', updateSelectedCount);
+                tdCb.appendChild(cb);
+            }
+            tr.appendChild(tdCb);
+
+            tr.appendChild(tdText(row.parse_error ? `${row.app_name} ⚠ parse error` : row.app_name));
+            tr.appendChild(tdText(row.parse_error ? '—' : row.acs_count));
+            tr.appendChild(tdChip(row.parse_error ? '—' : (row.has_enc_cert ? '✓' : '—'), row.has_enc_cert ? 'chip-ok' : null));
+            tr.appendChild(tdChip(row.parse_error ? '—' : (row.has_signing_cert ? '✓' : '—'), row.has_signing_cert ? 'chip-ok' : null));
+            tr.appendChild(tdText(row.group || '—'));
+            tr.appendChild(tdChip(row.requires_review ? 'Review' : '', row.requires_review ? 'chip-warn' : null));
+
+            if (row.in_okta) {
+                const acsMatch = row.okta_acs_count === row.acs_count;
+                tr.appendChild(tdChip(`✓ in Okta (${row.okta_acs_count ?? '?'} ACS)`, acsMatch ? 'chip-ok' : 'chip-warn'));
+            } else if (row.parse_error) {
+                tr.appendChild(tdChip('parse error', 'chip-bad'));
+            } else {
+                tr.appendChild(tdChip('missing', 'chip-bad'));
+            }
+
+            tr.appendChild(tdText(row.okta_policy || (row.in_okta ? '—' : '')));
+            tr.appendChild(tdText(row.okta_routing_rule || (row.in_okta ? '—' : '')));
+
+            const tdStatus = document.createElement('td');
+            if (row.in_okta && row.okta_id) {
+                const btn = document.createElement('button');
+                btn.dataset.appId = row.okta_id;
+                btn.dataset.status = row.okta_status;
+                setStatusBtn(btn, row.okta_status);
+                btn.addEventListener('click', () => toggleStatus(btn));
+                tdStatus.appendChild(btn);
+            }
+            tr.appendChild(tdStatus);
+
+            tbody.appendChild(tr);
+        }
+
+        updateStatusBar();
+        updateSelectedCount();
+    }
+
+    function tdText(val) {
+        const td = document.createElement('td');
+        td.textContent = val ?? '';
+        return td;
+    }
+    function tdChip(text, cls) {
+        const td = document.createElement('td');
+        if (text) {
+            const span = document.createElement('span');
+            span.className = 'chip' + (cls ? ' ' + cls : '');
+            span.textContent = text;
+            td.appendChild(span);
+        }
+        return td;
+    }
+
+    function updateStatusBar() {
+        const total   = scanData.length;
+        const inOkta  = scanData.filter(r => r.in_okta).length;
+        const missing = total - inOkta;
+        const review  = scanData.filter(r => r.requires_review).length;
+        const enc     = scanData.filter(r => r.has_enc_cert).length;
+
+        $('summary-pills').outerHTML = `<div id="summary-pills" style="display:contents">
+            <span class="chip chip-ok">&#10003; In Okta: ${inOkta}</span>
+            <span class="chip chip-bad">Missing: ${missing}</span>
+            ${review ? `<span class="chip chip-warn">Review: ${review}</span>` : ''}
+            ${enc    ? `<span class="chip">Enc certs: ${enc}</span>` : ''}
+            <span class="chip">Total: ${total}</span>
+        </div>`;
+
+        const shown = filteredScanData();
+        $('filter-count').textContent = `${shown.length} app${shown.length !== 1 ? 's' : ''}`;
+    }
+
+    function updateSelectedCount() {
+        const checked = document.querySelectorAll('.app-cb:checked').length;
+        $('selected-count').textContent = checked ? `${checked} selected` : '';
+    }
+
+    function toggleSelectAll(master) {
+        document.querySelectorAll('.app-cb').forEach(cb => cb.checked = master.checked);
+        updateSelectedCount();
+    }
+
+    // ── Import ─────────────────────────────────────────────────────────────
+    function doImport() {
+        const selected = [...document.querySelectorAll('.app-cb:checked')].map(cb => cb.value);
+        if (!selected.length) { alert('No apps selected.'); return; }
+
+        const env = getEnv();
+        const dir = getInputDir();
+
+        $('import-btn').setAttribute('aria-busy', 'true');
+        $('import-btn').disabled = true;
+        $('import-status').textContent = `Importing ${selected.length} app(s)…`;
+
+        sessionResults = [];
+        sessionSummary = null;
+
+        const policy_id = $('policy-select').value;
+        const update_existing = $('update-existing').checked;
+        const routingVal = $('routing-rule-select').value;
+        const [routing_rule_id = '', routing_policy_id = ''] = routingVal.split(':');
+
+        fetch('/api/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ env, input_dir: dir, apps: selected, policy_id, routing_rule_id, routing_policy_id, update_existing }),
+        }).then(resp => {
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let buf = '';
+
+            function read() {
+                reader.read().then(({ done, value }) => {
+                    if (done) return;
+                    buf += decoder.decode(value, { stream: true });
+                    const parts = buf.split('\n\n');
+                    buf = parts.pop();
+                    for (const part of parts) {
+                        const line = part.replace(/^data: /, '').trim();
+                        if (!line) continue;
+                        try {
+                            const evt = JSON.parse(line);
+                            if (evt.type === 'progress') {
+                                sessionResults.push({
+                                    app: evt.app,
+                                    status: evt.status,
+                                    okta_id: evt.okta_id || '',
+                                    msg: evt.msg || '',
+                                });
+                            } else if (evt.type === 'done') {
+                                sessionSummary = evt.summary;
+                                const s = evt.summary;
+                                $('import-btn').removeAttribute('aria-busy');
+                                $('import-btn').disabled = false;
+                                $('import-status').textContent =
+                                    `Done — ${s.created} created, ${s.skipped} skipped, ${s.error} errors`;
+                                renderSessionResults();
+                                doScan();
+                            }
+                        } catch {}
+                    }
+                    read();
+                });
+            }
+            read();
+        }).catch(e => {
+            alert('Network error: ' + e.message);
+            $('import-btn').removeAttribute('aria-busy');
+            $('import-btn').disabled = false;
+        });
+    }
+
+    // ── Session Results ─────────────────────────────────────────────────────
+    function renderSessionResults() {
+        if (!sessionResults.length) return;
+        $('session-section').classList.remove('hidden');
+
+        if (sessionSummary) {
+            const s = sessionSummary;
+            $('session-chips').innerHTML = `
+                <span class="chip chip-ok">Created: ${s.created}</span>
+                <span class="chip chip-warn">Skipped: ${s.skipped}</span>
+                ${s.error ? `<span class="chip chip-bad">Errors: ${s.error}</span>` : ''}
+            `;
+        }
+
+        const tbody = $('session-tbody');
+        tbody.innerHTML = '';
+        for (const r of sessionResults) {
+            const tr = document.createElement('tr');
+            tr.appendChild(tdText(r.app));
+            const cls = r.status === 'created' ? 'chip-ok'
+                      : r.status === 'error'   ? 'chip-bad'
+                      : 'chip-warn';
+            tr.appendChild(tdChip(r.status, cls));
+            tr.appendChild(tdText(r.okta_id || '—'));
+            const tdNotes = document.createElement('td');
+            if (r.msg) {
+                tdNotes.textContent = r.msg;
+                if (r.status === 'error')   tdNotes.style.color = '#b71c1c';
+                else if (r.status === 'skipped') tdNotes.style.color = '#7b5a00';
+            }
+            tr.appendChild(tdNotes);
+            tbody.appendChild(tr);
+        }
+    }
+
+    // ── Export ─────────────────────────────────────────────────────────────
+    function exportCSV() {
+        if (!scanData.length) { alert('Run a scan first.'); return; }
+        const headers = ['App Name','Status','ACS Endpoints','Enc Cert','Sign Cert','Group','Review Flag','Okta ID'];
+        const rows = scanData.map(r => [
+            r.app_name,
+            r.in_okta ? 'In Okta' : r.parse_error ? 'Parse Error' : 'Missing',
+            r.acs_count ?? '',
+            r.has_enc_cert ? 'Yes' : 'No',
+            r.has_signing_cert ? 'Yes' : 'No',
+            r.group || '',
+            r.requires_review ? 'Yes' : 'No',
+            r.okta_id || '',
+        ]);
+        const csv = [headers, ...rows]
+            .map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+            .join('\n');
+        download('migration_report.csv', 'text/csv', csv);
+    }
+
+    function download(filename, type, content) {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([content], { type }));
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    }
+
+    // ── Status toggle ──────────────────────────────────────────────────────
+    function setStatusBtn(btn, status) {
+        const active = status === 'ACTIVE';
+        btn.textContent = active ? 'Active' : 'Inactive';
+        btn.style.cssText = [
+            'margin:0; padding:0.15rem 0.7rem; font-size:0.82em; border-radius:999px;',
+            'cursor:pointer; border:1px solid; font-weight:600;',
+            active
+                ? 'background:#e8f5e9; border-color:#a5d6a7; color:#1b5e20;'
+                : 'background:#f5f5f5; border-color:#bbb; color:#555;'
+        ].join('');
+        btn.dataset.status = status;
+    }
+
+    async function toggleStatus(btn) {
+        const appId = btn.dataset.appId;
+        const current = btn.dataset.status;
+        const action = current === 'ACTIVE' ? 'deactivate' : 'activate';
+        btn.disabled = true;
+        btn.textContent = '…';
+        try {
+            const resp = await fetch('/api/toggle-status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ env: getEnv(), app_id: appId, action }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) { alert('Error: ' + (data.error || resp.status)); return; }
+            setStatusBtn(btn, data.status);
+            const row = scanData.find(r => r.okta_id === appId);
+            if (row) row.okta_status = data.status;
+        } catch (e) {
+            alert('Network error: ' + e.message);
+            setStatusBtn(btn, current);
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    // ── AI Analysis ────────────────────────────────────────────────────────
+    let analyzeAbortController = null;
+
+    function closeAiPanel() {
+        if (analyzeAbortController) { analyzeAbortController.abort(); analyzeAbortController = null; }
+        $('ai-panel').classList.add('hidden');
+        $('analyze-btn').removeAttribute('aria-busy');
+        $('analyze-btn').disabled = false;
+    }
+
+    function aiSection(title, html) {
+        return `<div style="margin-bottom:1rem">
+            <strong style="font-size:0.88em; text-transform:uppercase; letter-spacing:0.04em; color:var(--pico-muted-color);">${title}</strong>
+            <div style="margin-top:0.35rem">${html}</div>
+        </div>`;
+    }
+
+    function aiList(items, fn) {
+        if (!items || !items.length) return '<span style="color:var(--pico-muted-color)">None</span>';
+        return '<ul style="margin:0;padding-left:1.2rem">' + items.map(fn).join('') + '</ul>';
+    }
+
+    function renderAiSections(d) {
+        // S1 — Ready
+        const readyHtml = d.ready.length
+            ? `<span style="color:#1b5e20">${d.ready.length} app${d.ready.length!==1?'s':''} ready: </span>` +
+              `<span style="color:var(--pico-muted-color)">${d.ready.join(', ')}</span>`
+            : '<span style="color:var(--pico-muted-color)">None</span>';
+        $('ai-s1').innerHTML = aiSection('1. Ready to Import', readyHtml);
+
+        // S3 — No ACS
+        $('ai-s3').innerHTML = aiSection('3. No ACS Endpoints — Cannot Import',
+            aiList(d.no_acs, n => `<li><strong>${n}</strong> — obtain ACS URL from the SP before migration</li>`));
+
+        // S4 — Cert gaps
+        $('ai-s4').innerHTML = aiSection('4. Cert Gaps',
+            aiList(d.cert_gaps, c => `<li><strong>${c.app_name}</strong> — missing <em>${c.missing}</em> cert; verify SP requirements before import</li>`));
+
+        // S5 — ACS mismatches
+        $('ai-s5').innerHTML = aiSection('5. ACS Count Mismatches (already in Okta)',
+            aiList(d.acs_mismatch, m => `<li><strong>${m.app_name}</strong> — ADFS: ${m.adfs} endpoint${m.adfs!==1?'s':''}, Okta: ${m.okta} — verify Okta config</li>`));
+
+        // S6 — Import order
+        const s6html = `<ol style="margin:0;padding-left:1.2rem">
+            <li><strong>Tier 1 — Import now:</strong> The ${d.ready.length} ready apps</li>
+            <li><strong>Tier 2 — Resolve then import:</strong> ${d.cert_gaps.length} cert gap${d.cert_gaps.length!==1?'s':''}, ${d.acs_mismatch.length} ACS mismatch${d.acs_mismatch.length!==1?'es':''} already in Okta</li>
+            <li><strong>Tier 3 — Manual review first:</strong> ${d.no_acs.length} missing ACS + flagged apps (see section 2)</li>
+        </ol>`;
+        $('ai-s6').innerHTML = aiSection('6. Recommended Import Order', s6html);
+
+        // S2 — LLM section placeholder (streams in)
+        $('ai-s2').innerHTML = aiSection('2. Needs Attention',
+            '<div id="ai-s2-body" style="white-space:pre-wrap; font-family:inherit"></div>');
+    }
+
+    async function doAnalyze() {
+        if (!scanData.length) { alert('Run a scan first.'); return; }
+
+        const btn = $('analyze-btn');
+        if (analyzeAbortController) analyzeAbortController.abort();
+        analyzeAbortController = new AbortController();
+
+        btn.setAttribute('aria-busy', 'true');
+        btn.disabled = true;
+
+        // Clear sections
+        ['ai-s1','ai-s2','ai-s3','ai-s4','ai-s5','ai-s6'].forEach(id => $(id).innerHTML = '');
+        $('ai-panel').classList.remove('hidden');
+        $('ai-output').scrollTop = 0;
+
+        try {
+            const resp = await fetch('/api/analyze-scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ results: scanData, env: getEnv() }),
+                signal: analyzeAbortController.signal,
+            });
+
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let buf = '';
+
+            function read() {
+                reader.read().then(({ done, value }) => {
+                    if (done) return;
+                    buf += decoder.decode(value, { stream: true });
+                    const parts = buf.split('\n\n');
+                    buf = parts.pop();
+                    for (const part of parts) {
+                        const line = part.replace(/^data: /, '').trim();
+                        if (!line) continue;
+                        try {
+                            const evt = JSON.parse(line);
+                            if (evt.type === 'sections') {
+                                renderAiSections(evt.data);
+                            } else if (evt.type === 'chunk') {
+                                const el = $('ai-s2-body');
+                                if (el) { el.textContent += evt.text; $('ai-output').scrollTop = $('ai-output').scrollHeight; }
+                            } else if (evt.type === 'error') {
+                                const el = $('ai-s2-body');
+                                if (el) el.textContent += '\n[Error: ' + evt.msg + ']';
+                                btn.removeAttribute('aria-busy'); btn.disabled = false;
+                            } else if (evt.type === 'done') {
+                                btn.removeAttribute('aria-busy'); btn.disabled = false;
+                            }
+                        } catch {}
+                    }
+                    read();
+                });
+            }
+            read();
+        } catch (e) {
+            if (e.name !== 'AbortError') $('ai-s2').innerHTML = '<span style="color:#b71c1c">Error: ' + e.message + '</span>';
+            btn.removeAttribute('aria-busy');
+            btn.disabled = false;
+        }
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+    function showError(msg) {
+        const b = $('error-banner');
+        b.textContent = msg;
+        b.classList.remove('hidden');
+    }
+</script>
+</body>
+</html>

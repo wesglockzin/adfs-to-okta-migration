@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Import Logs — ADFS → Okta</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"/>
+    <style>
+        :root { font-size: 87.5%; }
+        body { margin: 0; }
+        main.container { max-width: 1400px; }
+
+        .chip {
+            display: inline-flex; align-items: center;
+            padding: 0.1rem 0.5rem; border-radius: 999px;
+            font-size: 0.82em; white-space: nowrap;
+            border: 1px solid var(--pico-muted-border-color);
+            background: var(--pico-muted-background-color);
+        }
+        .chip-ok   { background: #e8f5e9; border-color: #a5d6a7; color: #1b5e20; }
+        .chip-bad  { background: #ffebee; border-color: #ef9a9a; color: #b71c1c; }
+        .chip-warn { background: #fff8e1; border-color: #ffe082; color: #7b5a00; }
+
+        /* ── Layout: two-column ── */
+        .layout {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 1.5rem;
+            align-items: start;
+        }
+
+        /* ── Run list ── */
+        #run-list { list-style: none; padding: 0; margin: 0; }
+        #run-list li {
+            padding: 0.6rem 0.75rem;
+            border-radius: var(--pico-border-radius);
+            cursor: pointer;
+            border: 1px solid transparent;
+            margin-bottom: 0.3rem;
+        }
+        #run-list li:hover { background: var(--pico-muted-background-color); }
+        #run-list li.selected {
+            background: #e3f0fc;
+            border-color: #1b6ca8;
+        }
+        .run-title { font-weight: 600; font-size: 0.9em; }
+        .run-meta  { font-size: 0.78em; color: var(--pico-muted-color); margin-top: 0.2rem; }
+        .run-chips { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.35rem; }
+
+        /* ── Detail panel ── */
+        #detail-panel {
+            background: var(--pico-card-background-color);
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: var(--pico-border-radius);
+            padding: 1rem 1.25rem;
+            min-height: 500px;
+        }
+        #detail-empty {
+            color: var(--pico-muted-color);
+            font-style: italic;
+            margin-top: 2rem;
+            text-align: center;
+        }
+
+        /* ── Log terminal ── */
+        #log-output {
+            background: #1e2327; color: #d4d4d4;
+            border-radius: var(--pico-border-radius);
+            padding: 0.9rem 1rem; font-family: monospace; font-size: 0.82em;
+            white-space: pre-wrap; word-break: break-all;
+            max-height: 520px; overflow-y: auto;
+            margin-top: 0.75rem;
+        }
+        .log-info  { color: #9cdcfe; }
+        .log-warn  { color: #ce9178; }
+        .log-error { color: #f48771; }
+        .log-ok    { color: #4ec9b0; }
+
+        /* ── Session results table ── */
+        #session-table { font-size: 0.88em; margin-top: 1rem; }
+        #session-table th { white-space: nowrap; }
+        #session-table td { vertical-align: middle; }
+
+        footer {
+            text-align: center; font-size: 0.9em; color: var(--pico-muted-color);
+            margin-top: 2rem; padding: 1rem 0 1.5rem;
+            border-top: 1px solid var(--pico-muted-border-color);
+        }
+
+        .empty-state { color: var(--pico-muted-color); font-style: italic; padding: 2rem 0; text-align: center; }
+    </style>
+</head>
+<body>
+<main class="container">
+
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.25rem; padding-top:1rem">
+        <hgroup style="margin:0">
+            <h2 style="margin:0">Import Log History</h2>
+            <p style="margin:0; color:var(--pico-muted-color)">ADFS &rarr; Okta Migration Tool &mdash; v{{ version }}</p>
+        </hgroup>
+        <a href="/" style="font-size:0.9em">&larr; Back to Import Tool</a>
+    </div>
+
+    <div class="layout">
+
+        <!-- ── Run list ── -->
+        <div>
+            <strong style="font-size:0.85em; color:var(--pico-muted-color); display:block; margin-bottom:0.5rem">PAST RUNS</strong>
+            <div id="list-loading" style="color:var(--pico-muted-color); font-style:italic; font-size:0.9em">Loading…</div>
+            <ul id="run-list"></ul>
+        </div>
+
+        <!-- ── Detail panel ── -->
+        <div id="detail-panel">
+            <div id="detail-empty">Select a run on the left to view its log.</div>
+            <div id="detail-content" style="display:none">
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:0.5rem">
+                    <div>
+                        <div id="detail-title" style="font-weight:700; font-size:1em; margin-bottom:0.25rem"></div>
+                        <div id="detail-meta" style="font-size:0.82em; color:var(--pico-muted-color)"></div>
+                    </div>
+                    <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap">
+                        <div id="detail-chips" style="display:flex; gap:0.4rem; flex-wrap:wrap"></div>
+                        <button class="secondary outline" style="margin:0; padding:0.2rem 0.75rem; font-size:0.82em" onclick="downloadCurrentLog()">Download</button>
+                    </div>
+                </div>
+
+                <div id="log-output"></div>
+
+                <div id="session-wrap" style="margin-top:1.25rem">
+                    <strong style="font-size:0.85em">Per-App Results</strong>
+                    <div style="overflow-x:auto">
+                        <table id="session-table">
+                            <thead>
+                                <tr>
+                                    <th>App Name</th>
+                                    <th>Result</th>
+                                    <th>Okta ID</th>
+                                    <th>Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody id="session-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <footer>ADFS &rarr; Okta Migration Tool &mdash; v1.7.0 &mdash; Local use only</footer>
+
+</main>
+
+<script>
+    let currentLog = null;
+
+    // ── Load run list ──────────────────────────────────────────────────────
+    async function loadList() {
+        const resp = await fetch('/api/logs');
+        const runs = await resp.json();
+        const list = document.getElementById('run-list');
+        document.getElementById('list-loading').style.display = 'none';
+
+        if (!runs.length) {
+            list.innerHTML = '<li style="color:var(--pico-muted-color); font-style:italic; font-size:0.9em">No logs yet.</li>';
+            return;
+        }
+
+        for (const r of runs) {
+            const li = document.createElement('li');
+            li.dataset.filename = r.filename;
+
+            const ts = r.timestamp ? new Date(r.timestamp).toLocaleString() : r.filename;
+            const envLabel = r.env ? r.env.toUpperCase() : '—';
+            const s = r.summary || {};
+
+            li.innerHTML = `
+                <div class="run-title">${ts}</div>
+                <div class="run-meta">${envLabel} &mdash; ${r.app_count} app${r.app_count !== 1 ? 's' : ''}</div>
+                <div class="run-chips">
+                    ${s.created  ? `<span class="chip chip-ok">Created: ${s.created}</span>` : ''}
+                    ${s.skipped  ? `<span class="chip chip-warn">Skipped: ${s.skipped}</span>` : ''}
+                    ${s.error    ? `<span class="chip chip-bad">Errors: ${s.error}</span>` : ''}
+                    ${!s.created && !s.skipped && !s.error ? '<span class="chip">No results</span>' : ''}
+                </div>
+            `;
+            li.addEventListener('click', () => loadRun(r.filename, li));
+            list.appendChild(li);
+        }
+    }
+
+    // ── Load a single run ──────────────────────────────────────────────────
+    async function loadRun(filename, li) {
+        document.querySelectorAll('#run-list li').forEach(el => el.classList.remove('selected'));
+        li.classList.add('selected');
+
+        const resp = await fetch(`/api/logs/${encodeURIComponent(filename)}`);
+        const data = await resp.json();
+        currentLog = { filename, data };
+        renderDetail(data);
+    }
+
+    function renderDetail(data) {
+        document.getElementById('detail-empty').style.display = 'none';
+        document.getElementById('detail-content').style.display = '';
+
+        const ts = data.timestamp ? new Date(data.timestamp).toLocaleString() : '—';
+        document.getElementById('detail-title').textContent =
+            `${(data.env || '').toUpperCase()} import — ${ts}`;
+        document.getElementById('detail-meta').textContent =
+            `Dir: ${data.input_dir || '—'}`;
+
+        const s = data.summary || {};
+        document.getElementById('detail-chips').innerHTML = `
+            ${s.created !== undefined ? `<span class="chip chip-ok">Created: ${s.created}</span>` : ''}
+            ${s.skipped !== undefined ? `<span class="chip chip-warn">Skipped: ${s.skipped}</span>` : ''}
+            ${s.error   !== undefined ? `<span class="chip ${s.error ? 'chip-bad' : ''}">Errors: ${s.error}</span>` : ''}
+        `;
+
+        // Log terminal
+        const output = document.getElementById('log-output');
+        output.innerHTML = '';
+        for (const evt of (data.events || [])) {
+            if (evt.type !== 'log') continue;
+            const div = document.createElement('div');
+            div.className = evt.level === 'error' ? 'log-error'
+                          : evt.level === 'warn'  ? 'log-warn'
+                          : 'log-info';
+            div.textContent = evt.msg;
+            output.appendChild(div);
+        }
+
+        // Per-app results table
+        const tbody = document.getElementById('session-tbody');
+        tbody.innerHTML = '';
+        const progressEvents = (data.events || []).filter(e => e.type === 'progress');
+        if (!progressEvents.length) {
+            document.getElementById('session-wrap').style.display = 'none';
+        } else {
+            document.getElementById('session-wrap').style.display = '';
+            for (const e of progressEvents) {
+                const tr = document.createElement('tr');
+                tr.appendChild(tdText(e.app || '—'));
+                const cls = e.status === 'created' || e.status === 'updated' ? 'chip-ok'
+                          : e.status === 'error' ? 'chip-bad' : 'chip-warn';
+                tr.appendChild(tdChip(e.status || '—', cls));
+                tr.appendChild(tdText(e.okta_id || '—'));
+                const tdN = document.createElement('td');
+                if (e.msg) {
+                    tdN.textContent = e.msg;
+                    if (e.status === 'error')   tdN.style.color = '#b71c1c';
+                    if (e.status === 'skipped') tdN.style.color = '#7b5a00';
+                }
+                tr.appendChild(tdN);
+                tbody.appendChild(tr);
+            }
+        }
+    }
+
+    function downloadCurrentLog() {
+        if (!currentLog) return;
+        const text = buildPlainText(currentLog.data);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+        a.download = currentLog.filename.replace('.json', '.txt');
+        a.click();
+        URL.revokeObjectURL(a.href);
+    }
+
+    function buildPlainText(data) {
+        const lines = [
+            'ADFS → Okta Migration Import Log',
+            `Run:     ${data.timestamp || ''}`,
+            `Env:     ${(data.env || '').toUpperCase()}`,
+            `Dir:     ${data.input_dir || ''}`,
+            `Summary: Created=${data.summary?.created ?? 0}  Skipped=${data.summary?.skipped ?? 0}  Errors=${data.summary?.error ?? 0}`,
+            '',
+        ];
+        for (const evt of (data.events || [])) {
+            if (evt.type === 'log') {
+                lines.push(`[${(evt.level || 'info').toUpperCase().padEnd(5)}] ${evt.msg}`);
+            } else if (evt.type === 'progress') {
+                let line = `${(evt.status || '').padEnd(8)}  ${evt.app}`;
+                if (evt.okta_id) line += `  →  ${evt.okta_id}`;
+                if (evt.msg)     line += `  [${evt.msg}]`;
+                lines.push(line);
+            }
+        }
+        return lines.join('\n');
+    }
+
+    function tdText(val) {
+        const td = document.createElement('td');
+        td.textContent = val ?? '';
+        return td;
+    }
+    function tdChip(text, cls) {
+        const td = document.createElement('td');
+        const span = document.createElement('span');
+        span.className = 'chip' + (cls ? ' ' + cls : '');
+        span.textContent = text;
+        td.appendChild(span);
+        return td;
+    }
+
+    loadList();
+</script>
+</body>
+</html>
