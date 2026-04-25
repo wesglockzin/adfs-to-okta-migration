@@ -1,6 +1,24 @@
+> **Reduces manual ADFS-to-Okta migration from hours-per-app to a
+> repeatable dry-run workflow with conflict detection, idempotent
+> re-runs, and full audit logs.**
+
 # ADFS to Okta Migration
 
 A Flask web tool that automates migrating ADFS Relying Party Trusts to Okta SAML 2.0 applications, using config files produced by an ADFS export script.
+
+---
+
+### About this repo
+
+This is a sanitized snapshot of internal tooling, published via an
+automated review-and-publish pipeline. Internal identifiers
+(subscription IDs, resource group names, internal hostnames, email
+addresses) are deliberately replaced with placeholders like
+`your-subscription-id`, `your-acr-name`, and `your-org`. Replace
+these with values appropriate to your environment when adapting
+the code.
+
+---
 
 ## Overview
 
