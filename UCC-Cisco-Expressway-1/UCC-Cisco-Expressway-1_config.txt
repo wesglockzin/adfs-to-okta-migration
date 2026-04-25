@@ -1,4 +1,4 @@
-﻿App Name: UCC-Cisco-Expressway-1
+﻿App Name: UCC-Cisco-internal-host
 SSO URL: https://host.example.gov
 Entity ID: Senate.gov--0B423E33542C0863
 Name ID Format: unspecified

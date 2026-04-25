@@ -8,7 +8,7 @@ and creates Okta SAML 2.0 apps via the Okta Apps API.
 Usage:
   python okta_saml_import.py --input-dir /path/to/ADFS_Migration_PROD_20260311_120000
   python okta_saml_import.py --input-dir /path/to/... --dry-run
-  python okta_saml_import.py --input-dir /path/to/... --app "UCC-Cisco-Expressway-1"
+  python okta_saml_import.py --input-dir /path/to/... --app "UCC-Cisco-internal-host"
 
 Environment variables (or .env file):
   OKTA_ORG_URL      e.g. https://your-org.okta.com
