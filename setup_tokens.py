@@ -26,9 +26,9 @@ except ImportError:
 KEYRING_SERVICE = "adfs-okta-migration"
 
 TOKENS = [
-    ("OKTA_DEV_API_TOKEN",  "DEV  (https://YOUR_DEV_OKTA_DOMAIN.okta-gov.com)"),
-    ("OKTA_STG_API_TOKEN",  "STG  (https://YOUR_STG_OKTA_DOMAIN.okta-gov.com)"),
-    ("OKTA_PROD_API_TOKEN", "PROD (https://YOUR_PROD_OKTA_DOMAIN.okta-gov.com)"),
+    ("OKTA_DEV_API_TOKEN",  "DEV  (https://dev-your-org.okta.com)"),
+    ("OKTA_STG_API_TOKEN",  "STG  (https://staging-your-org.okta.com)"),
+    ("OKTA_PROD_API_TOKEN", "PROD (https://your-org.okta.com)"),
 ]
 
 

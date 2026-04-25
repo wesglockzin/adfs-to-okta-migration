@@ -1,105 +1,57 @@
-# ADFS → Okta Migration Tool
+# ADFS to Okta Migration
 
-**v1.7.0 — Production**
+A Flask web tool that automates migrating ADFS Relying Party Trusts to Okta SAML 2.0 applications, using config files produced by an ADFS export script.
 
----
+## Overview
 
-## The Problem
+Migrating a large ADFS deployment to Okta requires moving each Relying Party Trust as an Okta SAML 2.0 application. Doing this by hand through the Okta Admin Console doesn't scale — there are hundreds of apps with different signing certificates, attribute mappings, and ACS endpoints. This tool ingests an ADFS export, produces matching Okta apps via the API, and provides a UI to monitor progress and surface conflicts.
 
-No tool existed to migrate 200+ enterprise applications from ADFS (Relying Party Trusts) to Okta SAML 2.0 at scale. Manual migration per-app was error-prone and didn't scale.
+The companion PowerShell export (`Export-ADFSRelyingPartyTrusts_v5.ps1`) runs on the source ADFS farm and produces the JSON config files this tool consumes.
 
-Specific challenges this tool was built to solve:
+## Features
 
-- ADFS exports (PowerShell XML) needed parsing into Okta API payloads
-- Multi-ACS endpoint apps required special handling — Okta's API has an undocumented POST→PUT two-step behavior for ACS endpoint persistence
-- FIPS-compliant encryption certificate upload (AES256_GCM + RSA_OAEP) for GovCloud environments
-- Re-running against the same export without creating duplicates (idempotency)
-- Group assignment driven by "Okta Translation Notes" embedded in ADFS config
-- No visibility into what succeeded or failed without running blind
+* **Idempotent operations** — running twice doesn't create duplicates
+* **Dry-run support** — preview every API call without making changes
+* **Per-action logging** — timestamped entries in `logs/` recording create / skip / error
+* **Multi-environment** — DEV, STG, PROD with separate token storage
+* **Conflict detection** — flags name collisions, certificate mismatches, attribute mapping issues before pushing to Okta
+* **Backup before edit** — `backups/<filename>.bak` written before every file mutation
 
----
+## Technical Stack
 
-## What It Does
+* **Backend:** Python 3, Flask
+* **Frontend:** Jinja2 templates + minimal CSS
+* **Okta integration:** Direct REST API via `okta_saml_import.py`
+* **Token storage:** OS keyring under service `adfs-okta-migration`
+* **LLM helper:** `llm_client.py` (optional — assists with attribute mapping suggestions)
 
-- Parses ADFS Relying Party Trust XML exports generated via PowerShell
-- Creates Okta SAML 2.0 apps via API with full configuration: ACS endpoints, Entity ID, name format, encryption certificates, attribute mappings
-- Handles multi-ACS endpoint batches with the POST→PUT two-step workaround
-- Idempotency checks — skips apps that already exist, no duplicates on re-runs
-- Dry-run mode — preview what would be created without touching Okta
-- Group assignment from translation notes embedded in ADFS config
-- Multi-environment support: DEV / STG / PROD with separate API tokens
-- Secure token storage via OS Keyring — no credentials on disk
-- Real-time streaming import progress via Server-Sent Events (SSE)
-- Import log history with per-run JSON storage and `/logs` page
-- **v1.7.0**: Local LLM scan layer — Qwen 2.5 72B via Ollama analyzes import output and flags configuration anomalies before they reach production
+## Configuration
 
----
-
-## Why It's Built This Way
-
-**Local LLM only** — Configuration analysis uses a local Qwen 2.5 72B model via Ollama. No data is sent to cloud APIs. Required in a federal environment where application metadata is sensitive.
-
-**OS Keyring** — All API tokens are stored in the platform keyring (macOS/Windows/Linux). Nothing is written to disk or environment files.
-
-**Idempotency first** — Re-running the tool against the same ADFS export is safe. Existing apps are detected and skipped automatically.
-
-**Dry-run default** — Destructive operations require explicit confirmation before anything touches Okta.
-
----
-
-## Tech Stack
-
-- Python 3.11+ / Flask (port 5001)
-- Okta REST API
-- Local LLM: Ollama + Qwen 2.5 72B (see [Related](#related))
-- macOS Keyring / OS Keyring (cross-platform)
-- Server-Sent Events (SSE) for streaming import progress
-
----
-
-## Setup
-
-**Requirements:** Python 3.11+, Ollama (optional — required only for AI scan layer)
-
-```bash
-pip install -r requirements.txt
-```
-
-Configure API tokens (stored in OS keyring — not on disk):
+Tokens are stored per environment in the OS keyring. Run setup once per machine:
 
 ```bash
 python setup_tokens.py
 ```
 
-Run the app:
+Stores:
 
-```bash
-python app.py
-```
+* `OKTA_DEV_API_TOKEN`
+* `OKTA_STG_API_TOKEN`
+* `OKTA_PROD_API_TOKEN`
 
-Open: [http://localhost:5001](http://localhost:5001)
+Target Okta org URLs are defined in the `OKTA_ADMIN_ENVIRONMENTS` dict in `okta_saml_import.py`.
 
----
+## Workflow
 
-## Environment Variables
+1. Run `Export-ADFSRelyingPartyTrusts_v5.ps1` on the source ADFS farm
+2. Drop the resulting JSON files into the working directory
+3. Start the web UI: `python app.py`
+4. Review the planned migrations in the dashboard (dry-run by default)
+5. Approve and execute against the target environment
 
-Reference `.env.example` for required configuration. All secrets must be stored via `setup_tokens.py`. Do not put real tokens in `.env`.
+## Security Conventions
 
----
-
-## Status
-
-Production — actively used for enterprise ADFS → Okta migration at the U.S. Senate.
-
-**v1.7.0 impact:**
-
-- Successfully processed 92 ACS endpoints in a production federal environment
-- Resolved critical Okta API behavior: POST→PUT two-step required for ACS endpoint persistence
-- Resolved E0000003 error caused by `nameFormat` → `namespace` attribute mapping mismatch
-- AI scan layer catches configuration anomalies before they reach production
-
----
-
-## Related
-
-- **identity-llm-client** — Local LLM client powering the AI scan layer (Ollama + Qwen 2.5 72B)
+* **All scripts must be idempotent** — running twice is a no-op for already-migrated apps
+* **Never hardcode tokens** — keyring is the source of truth
+* **Log every API action** — create, skip, and error all written to a timestamped log file in `logs/`
+* **Backup before edit** — every file mutation creates `backups/<filename>.bak` first

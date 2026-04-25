@@ -11,7 +11,7 @@ Usage:
   python okta_saml_import.py --input-dir /path/to/... --app "UCC-Cisco-Expressway-1"
 
 Environment variables (or .env file):
-  OKTA_ORG_URL      e.g. https://YOUR_ORG.okta-gov.com
+  OKTA_ORG_URL      e.g. https://your-org.okta.com
   OKTA_API_TOKEN    Okta API token with app create + cert upload permissions
 
 Options:
@@ -43,9 +43,9 @@ from dotenv import load_dotenv
 # ---------------------------------------------------------------------------
 
 OKTA_ADMIN_ENVIRONMENTS = {
-    "dev":  {"url": "https://YOUR_DEV_OKTA_DOMAIN.okta-gov.com",  "token_var": "OKTA_DEV_API_TOKEN"},
-    "stg":  {"url": "https://YOUR_STG_OKTA_DOMAIN.okta-gov.com",  "token_var": "OKTA_STG_API_TOKEN"},
-    "prod": {"url": "https://YOUR_PROD_OKTA_DOMAIN.okta-gov.com", "token_var": "OKTA_PROD_API_TOKEN"},
+    "dev":  {"url": "https://dev-your-org.okta.com",     "token_var": "OKTA_DEV_API_TOKEN"},
+    "stg":  {"url": "https://staging-your-org.okta.com", "token_var": "OKTA_STG_API_TOKEN"},
+    "prod": {"url": "https://your-org.okta.com",         "token_var": "OKTA_PROD_API_TOKEN"},
 }
 
 # ---------------------------------------------------------------------------

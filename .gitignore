@@ -3,11 +3,6 @@
 
 # Logs
 logs/
-*.log
-
-# Backups
-backups/
-*.bak
 
 # Python
 __pycache__/
