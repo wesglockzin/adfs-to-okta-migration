@@ -6,6 +6,8 @@
 
 A Flask web tool that automates migrating ADFS Relying Party Trusts to Okta SAML 2.0 applications, using config files produced by an ADFS export script.
 
+![ADFS to Okta Migration Tool — main view](screenshots/migration-tool.png)
+
 ---
 
 ### About this repo
