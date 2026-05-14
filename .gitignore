@@ -1,0 +1,12 @@
+# Real credentials — never commit
+.env
+
+# Logs
+logs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/

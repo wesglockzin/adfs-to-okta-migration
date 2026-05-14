@@ -1,0 +1,8 @@
+requests>=2.31.0
+python-dotenv>=1.0.0
+flask>=3.0.0
+keyring>=24.0.0
+Authlib
+gunicorn
+azure-identity>=1.15.0
+azure-monitor-query>=1.2.0
