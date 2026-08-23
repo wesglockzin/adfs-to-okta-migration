@@ -32,8 +32,10 @@ the configuration values are not.
    from the chosen Okta org and reports, per app: already in Okta or not,
    ACS-endpoint count, and anything that needs a human look before import.
 4. **Import** — `POST /api/import` creates the missing apps as Okta SAML 2.0
-   integrations (ACS URLs, audience, NameID, attribute statements, signing
-   certificate upload, group/Everyone assignment) and records the result.
+   integrations (ACS URLs, audience, NameID, attribute statements,
+   encryption-certificate upload, group/Everyone assignment) and records the
+   result. The ADFS *signing* cert is skipped by default — Okta issues its own
+   signing certificate for the new app.
 5. **Operate** — `/api/toggle-status` activates / deactivates an app;
    `/api/policies` and `/api/routing-rules` list what the org has; `/logs`
    shows past runs from Log Analytics.
