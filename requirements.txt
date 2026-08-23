@@ -6,3 +6,4 @@ Authlib
 gunicorn
 azure-identity>=1.15.0
 azure-monitor-query>=1.2.0
+markdown>=3.5

@@ -7,8 +7,8 @@
 #
 # Required env vars (or interactive prompts):
 #   OKTA_DEV_TOKEN, OKTA_STG_TOKEN, OKTA_PROD_TOKEN
-#   OIDC_CLIENT_ID_VAL         (PROD Okta "Okta Admin Tools" app client_id)
-#   OIDC_CLIENT_SECRET_VAL     (PROD Okta "Okta Admin Tools" app client_secret)
+#   OIDC_CLIENT_ID_VAL         (PROD Okta "Admin SSO App" app client_id)
+#   OIDC_CLIENT_SECRET_VAL     (PROD Okta "Admin SSO App" app client_secret)
 #   OIDC_ISSUER_VAL            (PROD Okta authorization-server issuer URL)
 #   FLASK_SECRET_KEY_VAL       (auto-generated if unset)
 
@@ -23,7 +23,7 @@ APP_NAME="adfs-okta-migration"
 RESOURCE_GROUP="your-resource-group"
 ACR="your-acr-name"
 LA_WORKSPACE_RG="your-resource-group"
-LA_WORKSPACE_NAME="workspace-<your-resource-group>"
+LA_WORKSPACE_NAME="workspace-federatedclaimsrg16IP"
 LA_TABLE="ADFSImportRuns"
 INITIAL_VERSION="v$(grep '^APP_VERSION' app.py | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
 IMAGE="${ACR}.azurecr.io/${APP_NAME}:${INITIAL_VERSION}"
@@ -42,8 +42,8 @@ echo "Using Container Apps Environment: $ENV_NAME"
 # Resolve LA workspace customerId + resource ID + shared key (for write).
 SUB=$(az account show --query id -o tsv)
 LA_RESOURCE_ID="/subscriptions/$SUB/resourceGroups/$LA_WORKSPACE_RG/providers/Microsoft.OperationalInsights/workspaces/$LA_WORKSPACE_NAME"
-LA_WORKSPACE_ID=$(az rest --method get --url "https://host.example.gov}?api-version=2020-08-01" --query "properties.customerId" -o tsv)
-LA_WORKSPACE_KEY=$(az rest --method post --url "https://host.example.gov}/sharedKeys?api-version=2020-08-01" --query "primarySharedKey" -o tsv)
+LA_WORKSPACE_ID=$(az rest --method get --url "https://management.azure.com${LA_RESOURCE_ID}?api-version=2020-08-01" --query "properties.customerId" -o tsv)
+LA_WORKSPACE_KEY=$(az rest --method post --url "https://management.azure.com${LA_RESOURCE_ID}/sharedKeys?api-version=2020-08-01" --query "primarySharedKey" -o tsv)
 echo "LA workspace: $LA_WORKSPACE_NAME (customerId=$LA_WORKSPACE_ID)"
 
 echo ""
@@ -112,7 +112,7 @@ az containerapp create \
 FQDN=$(az containerapp show --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" --query "properties.configuration.ingress.fqdn" -o tsv)
 
 az containerapp update --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" \
-  --set-env-vars "APP_BASE_URL=https://host.example.gov" -o none
+  --set-env-vars "APP_BASE_URL=https://$FQDN" -o none
 
 # ---------------------------------------------------------------------------
 # Grant the Container App's MI Log Analytics Reader on the workspace so the
@@ -130,13 +130,13 @@ az role assignment create \
 echo ""
 echo "==========================================="
 echo "  $APP_NAME created"
-echo "  URL: https://host.example.gov"
+echo "  URL: https://$FQDN/"
 echo ""
 echo "  Next:"
-echo "    1. Add this redirect URI to PROD Okta 'Okta Admin Tools' app:"
-echo "       https://host.example.gov"
+echo "    1. Add this redirect URI to PROD Okta 'Admin SSO App' app:"
+echo "       https://$FQDN/oidc/callback"
 echo "    2. Backfill historical import logs (optional, one-time):"
 echo "       LA_WORKSPACE_ID=$LA_WORKSPACE_ID LA_WORKSPACE_KEY='$LA_WORKSPACE_KEY' \\"
 echo "         LA_TABLE_NAME=$LA_TABLE python3 backfill-logs.py logs/"
-echo "    3. Subsequent deploys: ./deploy.sh <version>"
+echo "    Subsequent deploys: ./scripts/fleet-deploy.sh <tool> --dev --execute"
 echo "==========================================="

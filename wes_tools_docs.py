@@ -1,5 +1,5 @@
 """
-wes_tools_docs — shared in-tool documentation layer for the wes-tools fleet.
+wes_tools_docs — shared in-tool documentation layer for the internal-tools fleet.
 
 One function: register_howto(app, *, tool_name). Mounts a /howto route on
 the Flask app that renders the tool's HOWTO.md as a styled HTML page.

@@ -1,5 +1,5 @@
 """
-Identity Intelligence Platform — LLM Client
+Identity tooling — LLM Client
 All Ollama calls route through here. Never call Ollama directly from app code.
 
 Usage:

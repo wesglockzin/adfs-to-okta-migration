@@ -5,7 +5,7 @@ Local run:    .venv/bin/python app.py     # http://localhost:5001
 ACA URL:      https://adfs-okta-migration.your-env.eastus.azurecontainerapps.io
 
 Auth posture (v2.0.0+):
-  PROD Okta OIDC gate via the shared "Okta Admin Tools" app. Authlib drives
+  PROD Okta OIDC gate via the shared "Admin SSO App" app. Authlib drives
   the OAuth flow and validates the id_token. If any of the OIDC env vars is
   missing the gate disables itself (open posture) so the tool stays usable
   when running locally without OIDC.
@@ -87,6 +87,7 @@ from okta_saml_import import (
     load_cert,
     parse_config,
 )
+from wes_tools_docs import register_howto
 
 try:
     from llm_client import ask_stream as llm_ask_stream
@@ -95,9 +96,9 @@ except ImportError:
     LLM_AVAILABLE = False
     llm_ask_stream = None
 
-APP_VERSION = "2.0.8"
+APP_VERSION = "2.0.9"
 
-# ── OIDC config (PROD Okta via "Okta Admin Tools" app) ───────────────────────
+# ── OIDC config (PROD Okta via "Admin SSO App" app) ───────────────────────
 FLASK_SECRET_KEY = os.environ.get("FLASK_SECRET_KEY") or os.urandom(32).hex()
 OIDC_ISSUER = os.environ.get("OIDC_ISSUER", "").rstrip("/")
 OIDC_CLIENT_ID = os.environ.get("OIDC_CLIENT_ID", "")
@@ -128,6 +129,8 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = APP_BASE_URL.startswith("https://")
 app.config["SESSION_COOKIE_HTTPONLY"] = True
+
+register_howto(app, tool_name="ADFS to Okta Migration")
 
 oauth = OAuth(app)
 if OIDC_ENABLED:
@@ -214,7 +217,7 @@ def _la_post(records: list[dict]) -> None:
     rfc_date = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
     signature = _la_signature(LA_WORKSPACE_ID, LA_WORKSPACE_KEY, rfc_date,
                               len(body), method, content_type, resource)
-    url = f"https://host.example.gov}.ods.opinsights.azure.com{resource}?api-version=2016-04-01"
+    url = f"https://{LA_WORKSPACE_ID}.ods.opinsights.azure.com{resource}?api-version=2016-04-01"
     r = req_lib.post(url, data=body, headers={
         "Content-Type":   content_type,
         "Authorization":  signature,
@@ -273,7 +276,7 @@ def health():
 LOGIN_HTML = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>ADFS Migration — Sign in</title>
 <style>
- body{margin:0;background:#0f172a;color:#e2e8f0;font:14px -apple-system,Segoe UI,Roboto,sans-serif;display:grid;place-items:center;min-height:100vh}
+ body{margin:0;background:#0f172a;color:#e2e8f0;font:14px -apple-system,Segoe UI,Roboto,ExampleApp-serif;display:grid;place-items:center;min-height:100vh}
  .card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:40px;max-width:420px;width:90%;text-align:center}
  h1{margin:0 0 8px;font-size:20px}
  p{color:#94a3b8;margin:0 0 28px;font-size:13px}
@@ -291,7 +294,7 @@ LOGIN_HTML = """<!doctype html>
  <a class="btn" href="/oidc/login">Sign in</a>
  {% if error %}
    {% if 'access_denied' in error %}
-   <div class="vpn"><b>VPN required.</b> This app is restricted to the internal network. Connect to AnyConnect, then click Sign in again.<span class="raw">{{ error }}</span></div>
+   <div class="vpn"><b>VPN required.</b> This app is restricted to the internal network. Connect to the VPN client, then click Sign in again.<span class="raw">{{ error }}</span></div>
    {% else %}<div class="err">{{ error }}</div>{% endif %}
  {% endif %}
 </div>

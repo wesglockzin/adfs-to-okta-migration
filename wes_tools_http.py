@@ -1,5 +1,5 @@
 """
-wes_tools_http — shared HTTP identity layer for the wes-tools fleet.
+wes_tools_http — shared HTTP identity layer for the internal-tools fleet.
 
 One function: make_session(tool_name, tool_version). Every tool that talks
 to an external service (Okta, IdPs, etc.) builds its `requests.Session`
@@ -19,10 +19,10 @@ import requests
 
 
 def make_session(tool_name: str, tool_version: str) -> requests.Session:
-    """Return a requests.Session pre-configured for the wes-tools fleet.
+    """Return a requests.Session pre-configured for the internal-tools fleet.
 
     Sets:
-      - User-Agent: {tool_name}/{tool_version} (wes-tools)
+      - User-Agent: {tool_name}/{tool_version} (internal-tools)
       - Accept:     application/json
 
     Both are sane defaults; callers can mutate `session.headers` after
@@ -31,7 +31,7 @@ def make_session(tool_name: str, tool_version: str) -> requests.Session:
     """
     session = requests.Session()
     session.headers.update({
-        "User-Agent": f"{tool_name}/{tool_version} (wes-tools)",
+        "User-Agent": f"{tool_name}/{tool_version} (internal-tools)",
         "Accept": "application/json",
     })
     return session

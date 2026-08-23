@@ -42,7 +42,7 @@ def la_post(workspace_id, shared_key, log_type, records):
     rfc_date = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
     sig = la_signature(workspace_id, shared_key, rfc_date, len(body),
                        "POST", "application/json", "/api/logs")
-    url = f"https://host.example.gov}.ods.opinsights.azure.com/api/logs?api-version=2016-04-01"
+    url = f"https://{workspace_id}.ods.opinsights.azure.com/api/logs?api-version=2016-04-01"
     r = requests.post(url, data=body, headers={
         "Content-Type":   "application/json",
         "Authorization":  sig,

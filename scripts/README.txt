@@ -45,8 +45,8 @@ per the param above), sortable by column.
   OK               — proceed with checked rows
   Cancel / Esc / X — exit, no folder created
 
-Filtering does not change checked state. Pattern: filter to "westlaw",
-Check All, clear filter — only Westlaw rows stay checked.
+Filtering does not change checked state. Pattern: filter to "ExampleApp",
+Check All, clear filter — only ExampleApp rows stay checked.
 
 
 Output layout
