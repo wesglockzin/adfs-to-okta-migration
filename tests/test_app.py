@@ -375,10 +375,10 @@ def test_import_counts_updated_apps_separately(failing_okta, monkeypatch, tmp_pa
         },
         headers=ORIGIN,
     )
-    done = [
+    done = next(
         json.loads(line[len("data: ") :])
         for line in resp.get_data(as_text=True).splitlines()
         if line.startswith("data: ") and '"type": "done"' in line
-    ][0]
+    )
     assert done["summary"]["updated"] == 1
     assert done["summary"]["created"] == 0
