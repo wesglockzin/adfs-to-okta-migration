@@ -128,7 +128,7 @@ def _client_error(context: str, exc: BaseException) -> str:
 
     Clients never get exception text, Okta response bodies or server paths.
     """
-    log.warning("%s: %r", context, exc, exc_info=True)
+    log.warning("%s: %r", context, exc, exc_info=exc)
     response = getattr(exc, "response", None)
     status = getattr(response, "status_code", None)
     if status:
