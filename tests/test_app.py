@@ -381,7 +381,11 @@ def test_run_history_from_log_analytics_carries_updated_count(
     detail = client.get("/api/logs/abc").get_json()
     assert listing[0]["summary"]["updated"] == 3
     assert detail["summary"]["updated"] == 3
-    assert all("summary_updated_d" in q for q in queries)
+    assert len(queries) == 2
+    assert all(
+        'summary_updated_d = column_ifexists("summary_updated_d", real(0))' in q
+        for q in queries
+    )
 
 
 def test_import_counts_updated_apps_separately(failing_okta, monkeypatch, tmp_path):

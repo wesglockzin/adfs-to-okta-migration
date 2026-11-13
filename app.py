@@ -1026,7 +1026,7 @@ def api_logs_list():
                 "| where kind_s == 'summary' "
                 "| project ts_t, run_id_s, env_s, "
                 "  apps_requested_s, "
-                "  summary_created_d, summary_updated_d, "
+                '  summary_created_d, summary_updated_d = column_ifexists("summary_updated_d", real(0)), '
                 "  summary_skipped_d, summary_error_d, "
                 "  input_dir_s "
                 "| order by ts_t desc "
@@ -1080,7 +1080,7 @@ def api_logs_get(run_id):
                 f"| where run_id_s == '{run_id}' "
                 "| project ts_t, kind_s, evt_s, level_s, msg_s, app_s, status_s, "
                 "  okta_id_s, env_s, input_dir_s, apps_requested_s, "
-                "  summary_created_d, summary_updated_d, "
+                '  summary_created_d, summary_updated_d = column_ifexists("summary_updated_d", real(0)), '
                 "  summary_skipped_d, summary_error_d "
                 "| order by ts_t asc"
             )
