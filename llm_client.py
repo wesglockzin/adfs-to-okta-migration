@@ -17,6 +17,7 @@ Usage:
     vector = embed("Okta routing rule for group finance-users")
 """
 
+import http.client
 import json
 import os
 import urllib.error
@@ -108,6 +109,9 @@ def _post_stream(path: str, payload: dict) -> Generator[str, None, None]:
         raise RuntimeError(f"LLM server returned HTTP {e.code}: {body}") from e
     except urllib.error.URLError as e:
         raise RuntimeError(f"LLM server unreachable at {base} ({e})") from e
+    except http.client.HTTPException as e:
+        # e.g. IncompleteRead when the server drops the connection mid-stream
+        raise RuntimeError(f"LLM connection dropped during stream ({e!r})") from e
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

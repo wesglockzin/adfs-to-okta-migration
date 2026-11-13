@@ -1,5 +1,8 @@
 import importlib
+import io
 import sys
+import zipfile
+import zlib
 
 import pytest
 
@@ -79,8 +82,38 @@ def test_login_keeps_relative_next(load_app):
         assert sess["post_login_redirect"] == "/logs"
 
 
+@pytest.mark.parametrize("failure", [zlib.error("bad data"), EOFError("short")])
+def test_corrupt_zip_returns_400_and_removes_temp_folder(
+    load_app, monkeypatch, tmp_path, failure
+):
+    module = load_app(AUTH_MODE="none")
+    monkeypatch.setattr(module, "UPLOAD_ROOT", tmp_path)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("export/a_config.txt", "x" * 100)
+
+    def broken_extract(self, *args, **kwargs):
+        raise failure
+
+    monkeypatch.setattr(zipfile.ZipFile, "extractall", broken_extract)
+    resp = module.app.test_client().post(
+        "/api/upload",
+        data={"file": (io.BytesIO(buf.getvalue()), "export.zip")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 400
+    assert "unzip failed" in resp.get_json()["error"]
+    assert list(tmp_path.iterdir()) == []
+
+
 @pytest.mark.parametrize(
-    "failure", [ValueError("bad line"), TimeoutError("slow"), IndexError("shape")]
+    "failure",
+    [
+        ValueError("bad line"),
+        TimeoutError("slow"),
+        IndexError("shape"),
+        RuntimeError("LLM connection dropped during stream"),
+    ],
 )
 def test_analyze_scan_reports_stream_failures_and_finishes(
     load_app, monkeypatch, failure

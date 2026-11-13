@@ -1,3 +1,4 @@
+import http.client
 import io
 import urllib.error
 
@@ -30,6 +31,29 @@ def test_health_reports_missing_settings_instead_of_raising():
     result = llm_client.health()
     assert result["status"] == "error"
     assert "LLM_MODEL" in result["detail"] or "LLM_BASE_URL" in result["detail"]
+
+
+def test_stream_drop_becomes_runtime_error(monkeypatch):
+    monkeypatch.setenv("LLM_BASE_URL", "http://llm.example.test")
+
+    class DroppingResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def __iter__(self):
+            yield b'data: {"choices": [{"delta": {"content": "hi"}}]}\n'
+            raise http.client.IncompleteRead(b"par", 10)
+
+    monkeypatch.setattr(
+        llm_client.urllib.request, "urlopen", lambda *a, **k: DroppingResponse()
+    )
+    stream = llm_client._post_stream("/v1/chat/completions", {})
+    assert next(stream) == "hi"
+    with pytest.raises(RuntimeError, match="dropped"):
+        next(stream)
 
 
 def test_http_error_reports_status_and_body(monkeypatch):

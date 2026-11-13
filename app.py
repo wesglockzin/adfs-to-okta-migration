@@ -42,6 +42,7 @@ import threading
 import time
 import uuid
 import zipfile
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -104,7 +105,15 @@ from wes_tools_docs import register_howto
 # should surface instead of being reported as an Okta/parse failure.
 _OKTA_ERRORS = (req_lib.RequestException, ValueError, KeyError, OSError)
 _PARSE_ERRORS = (OSError, ValueError, KeyError, IndexError)
-_ZIP_ERRORS = (zipfile.BadZipFile, RuntimeError, OSError, ValueError, NotImplementedError)
+_ZIP_ERRORS = (
+    zipfile.BadZipFile,
+    RuntimeError,
+    OSError,
+    ValueError,
+    NotImplementedError,
+    zlib.error,
+    EOFError,
+)
 
 try:
     from llm_client import ask_stream as llm_ask_stream
