@@ -47,17 +47,18 @@ CLI-only**: the web UI imports when you click Import.
 
 ## Optional: AI scan analysis
 
-`/api/analyze-scan` sends the scan summary to a **local** Ollama model
-(`llm_client.py`, see
+`/api/analyze-scan` sends the scan summary to the LLM server named by
+`LLM_BASE_URL` (`llm_client.py`, see
 [identity-llm-client](https://github.com/wesglockzin/identity-llm-client))
-and renders its observations in the AI panel. Nothing leaves the host. The
-button renders whenever the client module imports; it fails at request time
-if Ollama is not running on `localhost:11434`.
+and renders its observations in the AI panel. The button renders whenever the
+client module imports; it fails at request time if the LLM settings are
+missing or the server is down.
 
 ## Project layout
 
 | File | Role |
 |---|---|
+| `settings.py` | Startup auth-mode check and redirect validation |
 | `app.py` | Flask app — Okta OIDC gate, upload / scan / import / status APIs, Log Analytics run log |
 | `okta_saml_import.py` | Parser for the export format + Okta REST client + CLI |
 | `scripts/Export-ADFSRelyingPartyTrusts.ps1` | The export script (runs on ADFS) |
@@ -75,47 +76,65 @@ if Ollama is not running on `localhost:11434`.
 injected as environment variables. Org URLs live in the
 `OKTA_ADMIN_ENVIRONMENTS` dict in `okta_saml_import.py`.
 
-**Sign-in gate** — `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`,
-`APP_BASE_URL`, `FLASK_SECRET_KEY`. Okta OIDC, authorization code + PKCE;
-access is decided by assignment on the Okta app. **If the `OIDC_*` variables
-are unset the gate is disabled** — see *Known limitations*.
+**Sign-in gate** — `AUTH_MODE` (`oidc` by default, or `none`),
+`OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `APP_BASE_URL`,
+`FLASK_SECRET_KEY`. Okta OIDC, authorization code + PKCE; access is decided
+by assignment on the Okta app. **The app refuses to start** unless all of the
+`OIDC_*` settings and `FLASK_SECRET_KEY` are set, or `AUTH_MODE=none` is set
+explicitly (no sign-in; local use only).
+
+**Listening address** — `PORT` (default 5001) and `HOST` (default
+`127.0.0.1`; the container image sets `0.0.0.0` and `PORT=8080`).
 
 **Run log** — `LA_WORKSPACE_ID` / `LA_WORKSPACE_KEY` (write) and a managed
-identity with Log Analytics Reader (read) for `/logs`.
+identity with Log Analytics Reader (read) for `/logs`. `LA_TABLE_NAME`
+(default `ADFSImportRuns`), `LA_RESOURCE_ID` for queries.
+
+**AI panel (optional, no defaults)** — `LLM_BASE_URL` (OpenAI-compatible
+server), `LLM_MODEL_REASON`, `LLM_MODEL_FAST`, `LLM_MODEL_EMBED`. A missing
+one fails the request with the setting's name.
+
+Every setting is listed in `.env.example`.
 
 ## Running it
 
+Type: web service with a command-line importer.
+
 ```bash
-pip install -r requirements.txt
-python setup_tokens.py          # once per machine
-python app.py                   # http://localhost:5001
+pip install -e .
+adfs-to-okta-setup-tokens       # once per machine (optional keyring)
+python app.py                   # http://localhost:5001 (set AUTH_MODE=none locally)
+adfs-to-okta --env dev --input-dir <export> --dry-run   # CLI importer
 ```
 
-Deployment is Azure Container Apps, gunicorn with 2 workers × 4 threads.
-`setup-azure.sh` creates the container app once; after that, images are built
-and promoted by the fleet's shared scripts (build → DEV, then a digest-gated
-DEV → PROD promotion).
+Tests: `pip install -e ".[dev]" && pytest`.
+
+The container runs gunicorn with one worker and 8 threads, because upload
+sessions live in process memory. `setup-azure.sh` creates the Azure Container
+App once.
 
 ## Known limitations
 
 Real, known, in the order I intend to fix them.
 
-- **Upload sessions are in-process memory.** With 2 gunicorn workers a scan
-  can land on a worker that never saw the upload and report "session not
-  found." Resolve uploads from the shared working directory instead (or run
-  one worker).
+- **Upload sessions are in-process memory.** The container therefore runs one
+  gunicorn worker; do not scale to more workers or replicas until uploads are
+  resolved from shared storage.
+- **Okta org URLs are a fixed dev/stg/prod table** in `okta_saml_import.py`
+  (placeholders in this snapshot); they are not yet environment settings.
+- **Lockfile, formatter run and CI workflow are not yet in place.**
 - **Apps whose ADFS assignment can't be parsed default to Everyone** on
   import (Custom Policy trusts, lookup errors). The scan flags them for
   review; the import does not yet refuse them.
-- **Gate fails open when unconfigured.** A fail-closed startup check belongs
-  in production deployments.
 - **`run_id` is interpolated into the Log Analytics query** without
   validation; it should be checked as 32-hex before use.
 - **Duplicate-label lookup is a prefix search** (`?q=`, 10 results), so an
   org with many similar labels can miss an exact match and create a duplicate.
 - The AI panel's HTML is built with `innerHTML`; app names from the export
   should be escaped.
-- No automated tests; no CI yet.
+- Tests cover the config parser, settings checks, the auth gate, redirect
+  validation and Okta/LLM client error paths; the import and scan routes are
+  not yet covered.
 
 ## Version
 

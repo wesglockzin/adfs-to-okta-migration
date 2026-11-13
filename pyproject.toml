@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "adfs-to-okta-migration"
+version = "2.0.9"
+description = "Import ADFS relying-party-trust exports into Okta as SAML 2.0 apps (CLI and web UI)."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31,<3",
+    "python-dotenv>=1.0,<2",
+    "flask>=3.0,<4",
+    "keyring>=24.0,<26",
+    "Authlib>=1.3,<2",
+    "gunicorn>=22.0,<24",
+    "azure-identity>=1.15,<2",
+    "azure-monitor-query>=1.2,<3",
+    "markdown>=3.5,<4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0,<9", "ruff>=0.5"]
+
+[project.scripts]
+adfs-to-okta = "okta_saml_import:main"
+adfs-to-okta-setup-tokens = "setup_tokens:main"
+
+[tool.setuptools]
+py-modules = [
+    "app",
+    "llm_client",
+    "okta_saml_import",
+    "settings",
+    "setup_tokens",
+    "wes_tools_docs",
+    "wes_tools_http",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+# Existing modules were never run through the formatter. Lint still covers
+# them; they are listed here until they are reformatted in a later change.
+[tool.ruff.format]
+exclude = [
+    "app.py",
+    "backfill-logs.py",
+    "llm_client.py",
+    "okta_saml_import.py",
+    "setup_tokens.py",
+    "wes_tools_docs.py",
+    "wes_tools_http.py",
+]

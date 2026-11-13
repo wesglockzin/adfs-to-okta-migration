@@ -9,4 +9,8 @@ __pycache__/
 *.pyc
 *.pyo
 .venv/
+*.egg-info/
+build/
+.pytest_cache/
+.ruff_cache/
 venv/

@@ -1,0 +1,76 @@
+import importlib
+import sys
+
+import pytest
+
+from settings import ConfigError
+
+SETTING_NAMES = (
+    "AUTH_MODE",
+    "OIDC_ISSUER",
+    "OIDC_CLIENT_ID",
+    "OIDC_CLIENT_SECRET",
+    "FLASK_SECRET_KEY",
+)
+
+
+@pytest.fixture
+def load_app(monkeypatch):
+    def load(**env):
+        for name in SETTING_NAMES:
+            monkeypatch.delenv(name, raising=False)
+        for name, value in env.items():
+            monkeypatch.setenv(name, value)
+        sys.modules.pop("app", None)
+        return importlib.import_module("app")
+
+    yield load
+    sys.modules.pop("app", None)
+
+
+OIDC_ENV = {
+    "OIDC_ISSUER": "https://issuer.example.test",
+    "OIDC_CLIENT_ID": "id",
+    "OIDC_CLIENT_SECRET": "secret",
+    "FLASK_SECRET_KEY": "test-key",
+}
+
+
+def test_app_refuses_to_start_without_auth_settings(load_app):
+    with pytest.raises(ConfigError):
+        load_app()
+
+
+def test_health_is_public_and_makes_no_outbound_calls(load_app):
+    client = load_app(**OIDC_ENV).app.test_client()
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    assert resp.get_json()["status"] == "ok"
+
+
+def test_gate_blocks_anonymous_requests(load_app):
+    client = load_app(**OIDC_ENV).app.test_client()
+    assert client.get("/api/scan").status_code == 401
+    page = client.get("/")
+    assert page.status_code == 302
+    assert "/login" in page.headers["Location"]
+
+
+def test_login_ignores_offsite_next(load_app):
+    client = load_app(**OIDC_ENV).app.test_client()
+    client.get("/login?next=//evil.example")
+    with client.session_transaction() as sess:
+        assert "post_login_redirect" not in sess
+
+
+def test_login_keeps_relative_next(load_app):
+    client = load_app(**OIDC_ENV).app.test_client()
+    client.get("/login?next=/logs")
+    with client.session_transaction() as sess:
+        assert sess["post_login_redirect"] == "/logs"
+
+
+def test_auth_mode_none_leaves_gate_open(load_app):
+    client = load_app(AUTH_MODE="none").app.test_client()
+    assert client.get("/health").status_code == 200
+    assert client.get("/login").status_code == 200

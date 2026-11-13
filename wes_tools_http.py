@@ -1,17 +1,11 @@
 """
-wes_tools_http — shared HTTP identity layer for the internal-tools fleet.
+wes_tools_http — HTTP session helper.
 
-One function: make_session(tool_name, tool_version). Every tool that talks
+One function: make_session(tool_name, tool_version). Every call that talks
 to an external service (Okta, IdPs, etc.) builds its `requests.Session`
-through this helper so the fleet shows up consistently and identifiably
-in upstream audit logs.
+through this helper so requests are identifiable in upstream audit logs.
 
-Auth headers stay tool-local — this module owns identity, not auth.
-
-This file is the canonical source. Each tool directory holds a vendored
-copy at the same filename, propagated by `scripts/sync_shared.sh`. Edit
-the workspace-root copy and run the sync script — never edit a vendored
-copy directly.
+Auth headers stay caller-local — this module owns identity, not auth.
 """
 from __future__ import annotations
 
@@ -19,10 +13,10 @@ import requests
 
 
 def make_session(tool_name: str, tool_version: str) -> requests.Session:
-    """Return a requests.Session pre-configured for the internal-tools fleet.
+    """Return a requests.Session pre-configured with a User-Agent and Accept header.
 
     Sets:
-      - User-Agent: {tool_name}/{tool_version} (internal-tools)
+      - User-Agent: {tool_name}/{tool_version}
       - Accept:     application/json
 
     Both are sane defaults; callers can mutate `session.headers` after
@@ -31,7 +25,7 @@ def make_session(tool_name: str, tool_version: str) -> requests.Session:
     """
     session = requests.Session()
     session.headers.update({
-        "User-Agent": f"{tool_name}/{tool_version} (internal-tools)",
+        "User-Agent": f"{tool_name}/{tool_version}",
         "Accept": "application/json",
     })
     return session

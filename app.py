@@ -6,9 +6,9 @@ ACA URL:      https://adfs-okta-migration.your-env.eastus.azurecontainerapps.io
 
 Auth posture (v2.0.0+):
   PROD Okta OIDC gate via the shared "Admin SSO App" app. Authlib drives
-  the OAuth flow and validates the id_token. If any of the OIDC env vars is
-  missing the gate disables itself (open posture) so the tool stays usable
-  when running locally without OIDC.
+  the OAuth flow and validates the id_token. The app refuses to start if an
+  OIDC setting or FLASK_SECRET_KEY is missing, unless AUTH_MODE=none is set
+  explicitly (open posture, local use only).
 
 Input flow (v2.0.0+):
   - In ACA: user uploads a ZIP of an ADFS export. POST /api/upload extracts
@@ -73,8 +73,9 @@ def get_token(var_name: str) -> str:
             val = _keyring.get_password(KEYRING_SERVICE, var_name)
             if val:
                 return val.strip()
-        except Exception:
-            pass  # Linux ACA containers have no keyring backend — fall through
+        except Exception:  # noqa: BLE001 - keyring backends raise varied errors
+            # Containers have no keyring backend — fall through to env vars.
+            log.debug("keyring lookup failed for %s; using environment", var_name, exc_info=True)
     return os.environ.get(var_name, "").strip()
 
 
@@ -87,6 +88,7 @@ from okta_saml_import import (
     load_cert,
     parse_config,
 )
+from settings import resolve_auth_mode, safe_next
 from wes_tools_docs import register_howto
 
 try:
@@ -99,17 +101,17 @@ except ImportError:
 APP_VERSION = "2.0.9"
 
 # ── OIDC config (PROD Okta via "Admin SSO App" app) ───────────────────────
+AUTH_MODE = resolve_auth_mode(os.environ)
 FLASK_SECRET_KEY = os.environ.get("FLASK_SECRET_KEY") or os.urandom(32).hex()
 OIDC_ISSUER = os.environ.get("OIDC_ISSUER", "").rstrip("/")
 OIDC_CLIENT_ID = os.environ.get("OIDC_CLIENT_ID", "")
 OIDC_CLIENT_SECRET = os.environ.get("OIDC_CLIENT_SECRET", "")
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:5001").rstrip("/")
 OIDC_SCOPES = "openid email profile"
-OIDC_ENABLED = bool(OIDC_ISSUER and OIDC_CLIENT_ID and OIDC_CLIENT_SECRET)
+OIDC_ENABLED = AUTH_MODE == "oidc"
 
 if not OIDC_ENABLED:
-    log.warning("OIDC is NOT configured — auth gate disabled, app is open. "
-                "Set OIDC_ISSUER / OIDC_CLIENT_ID / OIDC_CLIENT_SECRET to enable.")
+    log.warning("AUTH_MODE=none — auth gate disabled, app is open.")
 
 # ── Log Analytics config (Data Collector write + Monitor Query read) ────────
 LA_WORKSPACE_ID = os.environ.get("LA_WORKSPACE_ID", "").strip()
@@ -294,7 +296,7 @@ LOGIN_HTML = """<!doctype html>
  <a class="btn" href="/oidc/login">Sign in</a>
  {% if error %}
    {% if 'access_denied' in error %}
-   <div class="vpn"><b>VPN required.</b> This app is restricted to the internal network. Connect to the VPN client, then click Sign in again.<span class="raw">{{ error }}</span></div>
+   <div class="vpn"><b>Access denied.</b> Your account may not be assigned to this app, or sign-in is restricted by network. Check with your administrator, then click Sign in again.<span class="raw">{{ error }}</span></div>
    {% else %}<div class="err">{{ error }}</div>{% endif %}
  {% endif %}
 </div>
@@ -306,7 +308,7 @@ LOGIN_HTML = """<!doctype html>
 def login():
     if session.get("user"):
         return redirect(url_for("index"))
-    nxt = request.args.get("next")
+    nxt = safe_next(request.args.get("next"))
     if nxt:
         session["post_login_redirect"] = nxt
     err = session.pop("login_error", None)
@@ -343,7 +345,7 @@ def oidc_callback():
         "name": claims.get("name"),
         "login_time": datetime.now(timezone.utc).isoformat(),
     }
-    redirect_to = session.pop("post_login_redirect", None) or url_for("index")
+    redirect_to = safe_next(session.pop("post_login_redirect", None)) or url_for("index")
     return redirect(redirect_to)
 
 
@@ -1062,6 +1064,6 @@ def api_logs_get(run_id):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
-    print(f"\n  ADFS → Okta Migration v{APP_VERSION}")
-    print(f"  Open: http://localhost:{port}\n")
-    app.run(host="127.0.0.1", port=port, debug=False, threaded=True)
+    host = os.environ.get("HOST", "127.0.0.1")
+    log.info("ADFS → Okta Migration v%s listening on %s:%d", APP_VERSION, host, port)
+    app.run(host=host, port=port, debug=False, threaded=True)

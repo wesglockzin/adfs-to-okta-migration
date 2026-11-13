@@ -217,10 +217,9 @@ class OktaClient:
         if self.dry_run:
             return {"id": "DRY_RUN", "_dryrun": True}
         if debug:
-            import sys
-            print("\n--- DEBUG: POST body ---", file=sys.stderr)
-            print(json.dumps(body, indent=2), file=sys.stderr)
-            print("--- END DEBUG ---\n", file=sys.stderr)
+            logging.getLogger("okta_import").debug(
+                "POST %s body:\n%s", path, json.dumps(body, indent=2)
+            )
         for _ in range(4):
             resp = self.session.post(f"{self.base}{path}", json=body)
             if resp.status_code == 429:
@@ -599,6 +598,8 @@ def main():
     script_dir = Path(__file__).parent
     log_dir = Path(args.log_dir) if args.log_dir else script_dir / "logs"
     log = setup_logging(log_dir)
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
 
     # Resolve environment config (mirrors Federated tool's OKTA_ENVIRONMENTS pattern)
     env_cfg = OKTA_ADMIN_ENVIRONMENTS[args.env]
