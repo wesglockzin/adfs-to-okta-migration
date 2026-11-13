@@ -759,13 +759,13 @@ def api_import():
 
         if not token:
             yield emit("log", level="error", msg=f"{env_cfg['token_var']} is not set")
-            summary = {"created": 0, "skipped": 0, "error": len(folder_names)}
+            summary = {"created": 0, "updated": 0, "skipped": 0, "error": len(folder_names)}
             save_log(summary)
             yield emit("done", summary=summary)
             return
 
         client = OktaClient(env_cfg["url"], token)
-        counts = {"created": 0, "skipped": 0, "error": 0}
+        counts = {"created": 0, "updated": 0, "skipped": 0, "error": 0}
 
         for folder_name in folder_names:
             folder = root / folder_name
@@ -840,7 +840,7 @@ def api_import():
                         except req_lib.HTTPError as e:
                             body = _client_error("Okta call failed", e)
                             yield emit("log", level="warn", msg=f"  Error assigning 'Everyone': {body}")
-                counts["created"] += 1
+                counts["updated"] += 1
                 yield emit("progress", app=app_name, status="updated", okta_id=okta_id)
                 continue
 

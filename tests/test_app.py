@@ -354,3 +354,31 @@ def test_import_http_error_is_streamed_without_body(
     assert '"status": "error"' in body
     assert "HTTP 500" in body
     assert OKTA_BODY not in body
+
+
+def test_import_counts_updated_apps_separately(failing_okta, monkeypatch, tmp_path):
+    folder = tmp_path / "app1"
+    folder.mkdir()
+    (folder / "x_config.txt").write_text("x")
+    cfg = {"app_name": "App1", "acs_endpoints": [], "assign_everyone": False}
+    monkeypatch.setattr(failing_okta, "parse_config", lambda path: cfg)
+    monkeypatch.setattr(
+        FailingOkta, "find_app_by_label", lambda self, name: {"id": "abc123"}
+    )
+    resp = failing_okta.app.test_client().post(
+        "/api/import",
+        json={
+            "env": "dev",
+            "input_dir": str(tmp_path),
+            "apps": ["app1"],
+            "update_existing": True,
+        },
+        headers=ORIGIN,
+    )
+    done = [
+        json.loads(line[len("data: ") :])
+        for line in resp.get_data(as_text=True).splitlines()
+        if line.startswith("data: ") and '"type": "done"' in line
+    ][0]
+    assert done["summary"]["updated"] == 1
+    assert done["summary"]["created"] == 0
