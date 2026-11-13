@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0,<9", "ruff>=0.5"]
+dev = ["pytest>=9.0.3", "ruff>=0.5"]
 
 [project.scripts]
 adfs-to-okta = "okta_saml_import:main"

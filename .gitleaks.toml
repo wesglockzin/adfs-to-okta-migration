@@ -1,0 +1,12 @@
+title = "adfs-to-okta-migration"
+
+[extend]
+useDefault = true
+
+# Plainly fake values used by the tests. Each entry matches one value in one
+# file; no whole file or folder is allowed.
+[[allowlists]]
+description = "Fake test values"
+condition = "AND"
+paths = ['''tests/test_app\.py''']
+regexes = ['''test-secret-not-real''', '''test-key-not-real''']

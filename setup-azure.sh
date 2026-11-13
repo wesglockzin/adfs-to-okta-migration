@@ -14,10 +14,8 @@
 
 set -e
 
-if [ -f "$HOME/.vpn-ca-bundle.pem" ]; then
-  export REQUESTS_CA_BUNDLE="$HOME/.vpn-ca-bundle.pem"
-fi
-export AZURE_CLI_DISABLE_CONNECTION_VERIFICATION=1
+# TLS verification stays on. If your network re-signs TLS, point
+# REQUESTS_CA_BUNDLE at your CA bundle before running this script.
 
 APP_NAME="adfs-okta-migration"
 RESOURCE_GROUP="your-resource-group"
@@ -138,5 +136,5 @@ echo "       https://$FQDN/oidc/callback"
 echo "    2. Backfill historical import logs (optional, one-time):"
 echo "       LA_WORKSPACE_ID=$LA_WORKSPACE_ID LA_WORKSPACE_KEY='$LA_WORKSPACE_KEY' \\"
 echo "         LA_TABLE_NAME=$LA_TABLE python3 backfill-logs.py logs/"
-echo "    Subsequent deploys: ./scripts/fleet-deploy.sh <tool> --dev --execute"
+echo "    Subsequent deploys: build and push a new image, then update the Container App."
 echo "==========================================="

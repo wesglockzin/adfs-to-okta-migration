@@ -1,5 +1,5 @@
 """
-wes_tools_docs — shared in-tool documentation layer for the internal-tools fleet.
+wes_tools_docs — shared in-tool documentation layer.
 
 One function: register_howto(app, *, tool_name). Mounts a /howto route on
 the Flask app that renders the tool's HOWTO.md as a styled HTML page.
@@ -9,8 +9,7 @@ content, structured top→bottom from manager-readable summary to engineer-
 level deep dive. The shared template handles styling, TOC, and chrome so
 every tool's /howto looks the same.
 
-This file is the canonical source. Each tool directory holds a vendored
-copy at the same filename, propagated by `scripts/sync_shared.sh`.
+This copy lives in this repository and is maintained here.
 """
 from __future__ import annotations
 
