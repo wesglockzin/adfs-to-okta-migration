@@ -356,6 +356,17 @@ def test_import_http_error_is_streamed_without_body(
     assert OKTA_BODY not in body
 
 
+def test_run_detail_rejects_query_injection_in_run_id(failing_okta, monkeypatch):
+    queries = []
+    monkeypatch.setattr(failing_okta, "LA_QUERY_ENABLED", True)
+    monkeypatch.setattr(
+        failing_okta, "_query_la", lambda kql, days=365: queries.append(kql) or []
+    )
+    resp = failing_okta.app.test_client().get("/api/logs/x'%20or%201==1%20or%20r=='")
+    assert resp.status_code == 400
+    assert queries == []
+
+
 def test_run_history_from_log_analytics_carries_updated_count(
     failing_okta, monkeypatch
 ):

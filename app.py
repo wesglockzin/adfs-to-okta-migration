@@ -34,6 +34,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -1072,6 +1073,8 @@ def api_logs_list():
 @app.route("/api/logs/<run_id>")
 def api_logs_get(run_id):
     """Full event detail for one run."""
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", run_id):
+        return jsonify({"error": "Invalid run id"}), 400
     if LA_QUERY_ENABLED:
         try:
             # Fetch all events + summary for this run
@@ -1129,7 +1132,7 @@ def api_logs_get(run_id):
 
     # Local-dev fallback: legacy JSON file by filename
     path = (LOG_DIR / run_id).resolve()
-    if not str(path).startswith(str(LOG_DIR.resolve())):
+    if not path.is_relative_to(LOG_DIR.resolve()):
         return jsonify({"error": "Invalid filename"}), 400
     if not path.exists():
         return jsonify({"error": "Not found"}), 404
