@@ -1,8 +1,7 @@
-#!/usr/bin/env python3
 """
 okta_saml_import.py
 ====================
-Reads ADFS export folders produced by Export-ADFSRelyingPartyTrusts_v5.ps1
+Reads ADFS export folders produced by scripts/Export-ADFSRelyingPartyTrusts.ps1
 and creates Okta SAML 2.0 apps via the Okta Apps API.
 
 Usage:
@@ -11,11 +10,11 @@ Usage:
   python okta_saml_import.py --input-dir /path/to/... --app "Example App"
 
 Environment variables (or .env file):
-  OKTA_ORG_URL      e.g. https://host.example.gov
-  OKTA_API_TOKEN    Okta API token with app create + cert upload permissions
+  OKTA_ENVIRONMENTS  name=URL pairs, e.g. dev=https://your-org.example.com,prod=https://...
+  OKTA_<NAME>_API_TOKEN  Okta API token for each name (app create + cert upload)
 
 Options:
-  --env dev|stg|prod  Target Okta environment (default: dev)
+  --env NAME          Target Okta environment, one of OKTA_ENVIRONMENTS (default: the first)
   --input-dir DIR     Root ADFS export folder (required)
   --app NAME          Process only one app by folder/app name (optional)
   --dry-run           Preview actions, no API calls
@@ -26,7 +25,6 @@ Options:
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import logging
 import os
@@ -38,19 +36,33 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
-from wes_tools_http import make_session
+from settings import ConfigError, parse_okta_environments
 
 APP_VERSION = "1.0.0"
 
+
+def make_session(tool_name: str, tool_version: str) -> requests.Session:
+    """Return a requests.Session with a User-Agent and a JSON Accept header.
+
+    Auth headers stay with the caller.
+    """
+    session = requests.Session()
+    session.headers.update(
+        {
+            "User-Agent": f"{tool_name}/{tool_version}",
+            "Accept": "application/json",
+        }
+    )
+    return session
+
+
 # ---------------------------------------------------------------------------
-# Environment config — mirrors OKTA_ENVIRONMENTS pattern from sso_tester_logic.py
+# Environment config — one source: the OKTA_ENVIRONMENTS setting
 # ---------------------------------------------------------------------------
 
-OKTA_ADMIN_ENVIRONMENTS = {
-    "dev":  {"url": "https://host.example.gov",     "token_var": "OKTA_DEV_API_TOKEN"},
-    "stg":  {"url": "https://host.example.gov", "token_var": "OKTA_STG_API_TOKEN"},
-    "prod": {"url": "https://host.example.gov",         "token_var": "OKTA_PROD_API_TOKEN"},
-}
+def get_okta_environments() -> dict[str, dict[str, str]]:
+    """Return {name: {"url", "token_var"}} from OKTA_ENVIRONMENTS (any length)."""
+    return parse_okta_environments(os.environ)
 
 # ---------------------------------------------------------------------------
 # Logging setup
@@ -217,10 +229,9 @@ class OktaClient:
         if self.dry_run:
             return {"id": "DRY_RUN", "_dryrun": True}
         if debug:
-            import sys
-            print("\n--- DEBUG: POST body ---", file=sys.stderr)
-            print(json.dumps(body, indent=2), file=sys.stderr)
-            print("--- END DEBUG ---\n", file=sys.stderr)
+            logging.getLogger("okta_import").debug(
+                "POST %s body:\n%s", path, json.dumps(body, indent=2)
+            )
         for _ in range(4):
             resp = self.session.post(f"{self.base}{path}", json=body)
             if resp.status_code == 429:
@@ -318,8 +329,10 @@ class OktaClient:
                 apps = self._get(f"/api/v1/policies/{policy['id']}/app?limit=500")
                 for app in apps:
                     result[app["id"]] = policy["name"]
-            except Exception:
-                pass
+            except (requests.RequestException, KeyError, ValueError):
+                logging.getLogger(__name__).warning(
+                    "Could not read apps for policy %s", policy.get("id"), exc_info=True
+                )
         return result
 
     def get_app_routing_rule_map(self) -> dict[str, str]:
@@ -333,8 +346,10 @@ class OktaClient:
                     for item in rule.get("conditions", {}).get("app", {}).get("include", []):
                         if item.get("type") == "APP" and item.get("id"):
                             result[item["id"]] = rule["name"]
-            except Exception:
-                pass
+            except (requests.RequestException, KeyError, ValueError):
+                logging.getLogger(__name__).warning(
+                    "Could not read rules for policy %s", policy.get("id"), exc_info=True
+                )
         return result
 
     def list_idp_routing_rules(self) -> list[dict]:
@@ -490,7 +505,7 @@ def import_app(folder: Path, client: OktaClient, skip_certs: bool, skip_signing_
     config_path = config_files[0]
     try:
         cfg = parse_config(config_path)
-    except Exception as e:
+    except (OSError, ValueError, KeyError, IndexError) as e:
         log.error("Failed to parse %s: %s", config_path, e)
         return "error"
 
@@ -581,10 +596,14 @@ def import_app(folder: Path, client: OktaClient, skip_certs: bool, skip_signing_
 
 def main():
     load_dotenv()
+    try:
+        environments = get_okta_environments()
+    except ConfigError as e:
+        sys.exit(str(e))
 
     parser = argparse.ArgumentParser(description="Import ADFS RPT configs into Okta as SAML 2.0 apps")
-    parser.add_argument("--env", choices=OKTA_ADMIN_ENVIRONMENTS.keys(), default="dev",
-                        help="Target Okta environment (default: dev)")
+    parser.add_argument("--env", choices=list(environments), default=next(iter(environments)),
+                        help="Target Okta environment (default: the first in OKTA_ENVIRONMENTS)")
     parser.add_argument("--input-dir", required=True, help="Root ADFS export folder")
     parser.add_argument("--app", help="Process only this app (folder name or app name)")
     parser.add_argument("--dry-run", action="store_true", help="Preview only, no API calls")
@@ -599,9 +618,10 @@ def main():
     script_dir = Path(__file__).parent
     log_dir = Path(args.log_dir) if args.log_dir else script_dir / "logs"
     log = setup_logging(log_dir)
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
 
-    # Resolve environment config (mirrors Federated tool's OKTA_ENVIRONMENTS pattern)
-    env_cfg = OKTA_ADMIN_ENVIRONMENTS[args.env]
+    env_cfg = environments[args.env]
     org_url = env_cfg["url"]
     token_var = env_cfg["token_var"]
     api_token = os.environ.get(token_var, "").strip()

@@ -101,9 +101,9 @@
             <fieldset style="margin:0">
                 <legend>Target Environment</legend>
                 <div class="env-switch">
-                    <label><input type="radio" name="env" value="dev" checked><span>DEV</span></label>
-                    <label><input type="radio" name="env" value="stg"><span>STG</span></label>
-                    <label><input type="radio" name="env" value="prod"><span>PROD</span></label>
+                    {% for env_name in environments %}
+                    <label><input type="radio" name="env" value="{{ env_name }}"{% if loop.first %} checked{% endif %}><span>{{ env_name | upper }}</span></label>
+                    {% endfor %}
                 </div>
             </fieldset>
 
@@ -337,7 +337,7 @@
         const sel = $('policy-select');
         sel.innerHTML = '<option value="">Loading…</option>';
         try {
-            const resp = await fetch(`/api/policies?env=${env}`);
+            const resp = await fetch(`/api/policies?env=${encodeURIComponent(env)}`);
             const data = await resp.json();
             if (!resp.ok) { sel.innerHTML = '<option value="">— unavailable —</option>'; return; }
             const saved = localStorage.getItem(`policy_${env}`) || '';
@@ -357,7 +357,7 @@
         const sel = $('routing-rule-select');
         sel.innerHTML = '<option value="">Loading…</option>';
         try {
-            const resp = await fetch(`/api/routing-rules?env=${env}`);
+            const resp = await fetch(`/api/routing-rules?env=${encodeURIComponent(env)}`);
             const data = await resp.json();
             if (!resp.ok) { sel.innerHTML = '<option value="">— unavailable —</option>'; return; }
             const saved = localStorage.getItem(`routing_rule_${env}`) || '';
@@ -621,7 +621,7 @@
                                 $('import-btn').removeAttribute('aria-busy');
                                 $('import-btn').disabled = false;
                                 $('import-status').textContent =
-                                    `Done — ${s.created} created, ${s.skipped} skipped, ${s.error} errors`;
+                                    `Done — ${s.created} created, ${s.updated || 0} updated, ${s.skipped} skipped, ${s.error} errors`;
                                 renderSessionResults();
                                 doScan();
                             }
@@ -647,6 +647,7 @@
             const s = sessionSummary;
             $('session-chips').innerHTML = `
                 <span class="chip chip-ok">Created: ${s.created}</span>
+                ${s.updated ? `<span class="chip chip-ok">Updated: ${s.updated}</span>` : ''}
                 <span class="chip chip-warn">Skipped: ${s.skipped}</span>
                 ${s.error ? `<span class="chip chip-bad">Errors: ${s.error}</span>` : ''}
             `;
@@ -657,7 +658,7 @@
         for (const r of sessionResults) {
             const tr = document.createElement('tr');
             tr.appendChild(tdText(r.app));
-            const cls = r.status === 'created' ? 'chip-ok'
+            const cls = (r.status === 'created' || r.status === 'updated') ? 'chip-ok'
                       : r.status === 'error'   ? 'chip-bad'
                       : 'chip-warn';
             tr.appendChild(tdChip(r.status, cls));

@@ -18,6 +18,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import sys
 import uuid
@@ -25,6 +26,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
+
+log = logging.getLogger("backfill-logs")
 
 
 def la_signature(workspace_id, shared_key, date, content_length, method, content_type, resource):
@@ -55,26 +58,27 @@ def la_post(workspace_id, shared_key, log_type, records):
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s", stream=sys.stdout)
     ws_id = os.environ.get("LA_WORKSPACE_ID", "").strip()
     ws_key = os.environ.get("LA_WORKSPACE_KEY", "").strip()
     log_type = os.environ.get("LA_TABLE_NAME", "ADFSImportRuns").strip()
     if not ws_id or not ws_key:
-        print("ERROR: LA_WORKSPACE_ID and LA_WORKSPACE_KEY required.", file=sys.stderr)
+        log.error("LA_WORKSPACE_ID and LA_WORKSPACE_KEY required.")
         return 2
 
     logs_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("logs")
     if not logs_dir.is_dir():
-        print(f"ERROR: {logs_dir} not found.", file=sys.stderr)
+        log.error("%s not found.", logs_dir)
         return 2
 
     files = sorted(logs_dir.glob("import_*.json"))
-    print(f"Backfilling {len(files)} historical run(s) → {log_type}_CL...")
+    log.info("Backfilling %d historical run(s) → %s_CL...", len(files), log_type)
 
     for f in files:
         try:
             data = json.loads(f.read_text())
-        except Exception as e:
-            print(f"  SKIP {f.name}: parse error ({e})")
+        except (OSError, ValueError) as e:
+            log.warning("SKIP %s: parse error (%s)", f.name, e)
             continue
 
         run_id = data.get("run_id") or uuid.uuid4().hex
@@ -94,6 +98,7 @@ def main():
             "input_dir":      data.get("input_dir", ""),
             "apps_requested": ",".join(apps_requested),
             "summary_created": int(summary.get("created", 0)),
+            "summary_updated": int(summary.get("updated", 0)),
             "summary_skipped": int(summary.get("skipped", 0)),
             "summary_error":   int(summary.get("error", 0)),
             "backfilled":      True,
@@ -120,11 +125,11 @@ def main():
             CHUNK = 500
             for i in range(0, len(records), CHUNK):
                 la_post(ws_id, ws_key, log_type, records[i:i + CHUNK])
-            print(f"  OK   {f.name}  run_id={run_id[:8]}…  records={len(records)}")
-        except Exception as e:
-            print(f"  FAIL {f.name}: {e}")
+            log.info("OK   %s  run_id=%s…  records=%d", f.name, run_id[:8], len(records))
+        except (requests.RequestException, RuntimeError) as e:
+            log.error("FAIL %s: %s", f.name, e)
 
-    print("Done. Note: LA ingestion may take a few minutes to surface in queries.")
+    log.info("Done. Note: LA ingestion may take a few minutes to surface in queries.")
     return 0
 
 

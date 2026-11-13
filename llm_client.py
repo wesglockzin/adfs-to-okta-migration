@@ -1,9 +1,10 @@
 """
 Identity tooling — LLM Client
-All Ollama calls route through here. Never call Ollama directly from app code.
+All LLM calls (OpenAI-compatible server, e.g. Ollama) route through here.
+Set LLM_BASE_URL, LLM_MODEL_REASON, LLM_MODEL_FAST and LLM_MODEL_EMBED.
 
 Usage:
-    from llm.client import ask, ask_stream, embed
+    from llm_client import ask, ask_stream, embed
 
     # Single response
     result = ask("Explain this SAML assertion", context=xml_string)
@@ -16,25 +17,43 @@ Usage:
     vector = embed("Okta routing rule for group finance-users")
 """
 
+import http.client
 import json
-import urllib.request
+import os
 import urllib.error
-from typing import Generator
+import urllib.request
+from collections.abc import Generator
 
 # ── Config ────────────────────────────────────────────────────────────────────
+# No defaults: the server URL and model names must be set in the environment.
 
-OLLAMA_BASE = "http://localhost:11434"
-
-MODELS = {
-    "reason": "qwen2.5:72b",        # Deep analysis, policy reasoning, complex queries
-    "fast":   "qwen2.5-coder:32b",  # Quick queries, code tasks, config parsing
-    "embed":  "nomic-embed-text",   # Embeddings for RAG / semantic search
+MODEL_VARS = {
+    "reason": "LLM_MODEL_REASON",  # Deep analysis, policy reasoning
+    "fast": "LLM_MODEL_FAST",  # Quick queries, config parsing
+    "embed": "LLM_MODEL_EMBED",  # Embeddings
 }
+
+
+def _require(name: str) -> str:
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise RuntimeError(f"{name} is not set")
+    return value
+
+
+def _base() -> str:
+    return _require("LLM_BASE_URL").rstrip("/")
+
+
+def _model(key: str) -> str:
+    """Resolve "reason"/"fast"/"embed" to the configured model; other names pass through."""
+    if key in MODEL_VARS:
+        return _require(MODEL_VARS[key])
+    return key
 
 SYSTEM_PROMPT = """You are an expert Identity and Access Management analyst with deep knowledge of:
 - Active Directory (AD) and ADFS claim rules, relying party trusts, federation metadata
 - Okta: SAML/OIDC app integrations, routing rules, sign-on policies, attribute mappings
-- Duo MFA: policies, enrollment, bypass, auth logs
 - SAML 2.0 and OIDC protocol mechanics
 - Security posture analysis for SSO/MFA configurations
 
@@ -46,9 +65,10 @@ and security concerns directly. Use IAM terminology accurately."""
 
 def _post(path: str, payload: dict) -> dict:
     """Raw HTTP POST to Ollama — no external dependencies required."""
+    base = _base()
     data = json.dumps(payload).encode()
     req = urllib.request.Request(
-        f"{OLLAMA_BASE}{path}",
+        f"{base}{path}",
         data=data,
         headers={"Content-Type": "application/json"},
         method="POST",
@@ -56,15 +76,19 @@ def _post(path: str, payload: dict) -> dict:
     try:
         with urllib.request.urlopen(req, timeout=300) as resp:
             return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")[:500]
+        raise RuntimeError(f"LLM server returned HTTP {e.code}: {body}") from e
     except urllib.error.URLError as e:
-        raise RuntimeError(f"Ollama unreachable at {OLLAMA_BASE} — is the service running? ({e})") from e
+        raise RuntimeError(f"LLM server unreachable at {base} ({e})") from e
 
 
 def _post_stream(path: str, payload: dict) -> Generator[str, None, None]:
     """Streaming POST — yields content chunks as they arrive."""
+    base = _base()
     data = json.dumps(payload).encode()
     req = urllib.request.Request(
-        f"{OLLAMA_BASE}{path}",
+        f"{base}{path}",
         data=data,
         headers={"Content-Type": "application/json"},
         method="POST",
@@ -75,14 +99,19 @@ def _post_stream(path: str, payload: dict) -> Generator[str, None, None]:
                 line = raw_line.decode().strip()
                 if not line or line == "data: [DONE]":
                     continue
-                if line.startswith("data: "):
-                    line = line[6:]
+                line = line.removeprefix("data: ")
                 chunk = json.loads(line)
                 delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
                 if delta:
                     yield delta
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")[:500]
+        raise RuntimeError(f"LLM server returned HTTP {e.code}: {body}") from e
     except urllib.error.URLError as e:
-        raise RuntimeError(f"Ollama unreachable at {OLLAMA_BASE} — is the service running? ({e})") from e
+        raise RuntimeError(f"LLM server unreachable at {base} ({e})") from e
+    except http.client.HTTPException as e:
+        # e.g. IncompleteRead when the server drops the connection mid-stream
+        raise RuntimeError(f"LLM connection dropped during stream ({e!r})") from e
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -106,9 +135,10 @@ def ask(
     Returns:
         The model's response as a string.
     """
+    _base()  # fail first on a missing server URL
     full_prompt = f"{prompt}\n\n{context}".strip() if context else prompt
     payload = {
-        "model": MODELS.get(model, model),
+        "model": _model(model),
         "messages": [
             {"role": "system", "content": system},
             {"role": "user",   "content": full_prompt},
@@ -137,9 +167,10 @@ def ask_stream(
                     yield f"data: {chunk}\n\n"
             return Response(generate(), mimetype="text/event-stream")
     """
+    _base()  # fail first on a missing server URL
     full_prompt = f"{prompt}\n\n{context}".strip() if context else prompt
     payload = {
-        "model": MODELS.get(model, model),
+        "model": _model(model),
         "messages": [
             {"role": "system", "content": system},
             {"role": "user",   "content": full_prompt},
@@ -160,8 +191,9 @@ def embed(text: str) -> list[float]:
     Returns:
         A list of floats representing the embedding vector.
     """
+    _base()  # fail first on a missing server URL
     payload = {
-        "model": MODELS["embed"],
+        "model": _model("embed"),
         "input": text,
     }
     result = _post("/v1/embeddings", payload)
@@ -169,17 +201,18 @@ def embed(text: str) -> list[float]:
 
 
 def health() -> dict:
-    """Check Ollama service and confirm expected models are available."""
+    """Check the LLM server and confirm the configured models are available."""
     try:
-        req = urllib.request.Request(f"{OLLAMA_BASE}/api/tags")
+        models = {k: _model(k) for k in MODEL_VARS}
+        req = urllib.request.Request(f"{_base()}/api/tags")
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read())
-        available = {m["name"] for m in data.get("models", [])}
-        return {
-            "status": "ok",
-            "available_models": sorted(available),
-            "expected": {k: v for k, v in MODELS.items()},
-            "missing": [v for v in MODELS.values() if not any(v in a for a in available)],
-        }
-    except Exception as e:
+    except (RuntimeError, urllib.error.URLError, OSError, ValueError) as e:
         return {"status": "error", "detail": str(e)}
+    available = {m["name"] for m in data.get("models", [])}
+    return {
+        "status": "ok",
+        "available_models": sorted(available),
+        "expected": models,
+        "missing": [v for v in models.values() if not any(v in a for a in available)],
+    }
