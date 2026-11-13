@@ -132,6 +132,7 @@ def ask(
     Returns:
         The model's response as a string.
     """
+    _base()  # fail first on a missing server URL
     full_prompt = f"{prompt}\n\n{context}".strip() if context else prompt
     payload = {
         "model": _model(model),
@@ -163,6 +164,7 @@ def ask_stream(
                     yield f"data: {chunk}\n\n"
             return Response(generate(), mimetype="text/event-stream")
     """
+    _base()  # fail first on a missing server URL
     full_prompt = f"{prompt}\n\n{context}".strip() if context else prompt
     payload = {
         "model": _model(model),
@@ -186,6 +188,7 @@ def embed(text: str) -> list[float]:
     Returns:
         A list of floats representing the embedding vector.
     """
+    _base()  # fail first on a missing server URL
     payload = {
         "model": _model("embed"),
         "input": text,
