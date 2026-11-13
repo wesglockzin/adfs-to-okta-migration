@@ -84,7 +84,9 @@ def test_login_keeps_relative_next(load_app):
 
 def test_login_page_hides_raw_provider_error(load_app):
     client = load_app(**OIDC_ENV).app.test_client()
-    resp = client.get("/oidc/callback?error=server_error&error_description=secret-detail-xyz")
+    resp = client.get(
+        "/oidc/callback?error=server_error&error_description=secret-detail-xyz"
+    )
     assert resp.status_code == 302
     page = client.get("/login")
     body = page.get_data(as_text=True)

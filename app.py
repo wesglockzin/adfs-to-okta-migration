@@ -362,7 +362,7 @@ def oidc_callback():
         return redirect(url_for("login"))
     try:
         token = oauth.okta.authorize_access_token()
-    except Exception:  # noqa: BLE001 - last-resort boundary; logged, client gets a generic message
+    except Exception:
         log.exception("OIDC token exchange failed")
         session["login_error"] = "Sign-in failed. Try again or ask your administrator."
         return redirect(url_for("login"))
