@@ -153,6 +153,7 @@ OIDC_CLIENT_ID = os.environ.get("OIDC_CLIENT_ID", "")
 OIDC_CLIENT_SECRET = os.environ.get("OIDC_CLIENT_SECRET", "")
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:5001").rstrip("/")
 OKTA_ADMIN_ENVIRONMENTS = get_okta_environments()
+DEFAULT_ENV = next(iter(OKTA_ADMIN_ENVIRONMENTS))
 # Optional allow-lists (comma-separated). When either is set, only matching
 # users may sign in. Groups are read from the "groups" claim.
 ALLOWED_USERS = split_list(os.environ.get("ALLOWED_USERS"))
@@ -321,6 +322,7 @@ def index():
                            version=APP_VERSION,
                            upload_only=OIDC_ENABLED,
                            user=session.get("user"),
+                           environments=list(OKTA_ADMIN_ENVIRONMENTS),
                            demo=demo)
 
 
@@ -533,7 +535,7 @@ def api_browse():
 
 @app.route("/api/policies")
 def api_policies():
-    env = request.args.get("env", "dev")
+    env = request.args.get("env", DEFAULT_ENV)
     if env not in OKTA_ADMIN_ENVIRONMENTS:
         return jsonify({"error": f"Unknown environment: {env}"}), 400
     env_cfg = OKTA_ADMIN_ENVIRONMENTS[env]
@@ -550,7 +552,7 @@ def api_policies():
 
 @app.route("/api/routing-rules")
 def api_routing_rules():
-    env = request.args.get("env", "dev")
+    env = request.args.get("env", DEFAULT_ENV)
     if env not in OKTA_ADMIN_ENVIRONMENTS:
         return jsonify({"error": f"Unknown environment: {env}"}), 400
     env_cfg = OKTA_ADMIN_ENVIRONMENTS[env]
@@ -568,7 +570,7 @@ def api_routing_rules():
 @app.route("/api/scan")
 def api_scan():
     """Scan the unpacked export folder and cross-reference against Okta."""
-    env = request.args.get("env", "dev")
+    env = request.args.get("env", DEFAULT_ENV)
     input_dir = request.args.get("input_dir", "").strip()
     session_id = request.args.get("session_id", "").strip()
 
@@ -661,7 +663,7 @@ def api_scan():
 @app.route("/api/toggle-status", methods=["POST"])
 def api_toggle_status():
     data = request.get_json()
-    env = data.get("env", "dev")
+    env = data.get("env", DEFAULT_ENV)
     app_id = data.get("app_id", "").strip()
     action = data.get("action", "")
 
@@ -691,7 +693,7 @@ def api_toggle_status():
 def api_import():
     """Import selected apps. Streams SSE events: log, progress, done."""
     data = request.get_json()
-    env = data.get("env", "dev")
+    env = data.get("env", DEFAULT_ENV)
     input_dir = data.get("input_dir", "").strip()
     session_id = data.get("session_id", "").strip()
     folder_names = data.get("apps", [])
@@ -926,7 +928,7 @@ def api_analyze_scan():
 
     data = request.get_json()
     results = data.get("results", [])
-    env = data.get("env", "dev")
+    env = data.get("env", DEFAULT_ENV)
 
     if not results:
         return jsonify({"error": "No scan results provided"}), 400

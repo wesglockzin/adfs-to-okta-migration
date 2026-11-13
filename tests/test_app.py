@@ -199,6 +199,19 @@ def test_auth_mode_none_leaves_gate_open(load_app):
     assert client.get("/login").status_code == 200
 
 
+def test_index_lists_configured_environments_and_defaults_to_first(load_app):
+    module = load_app(
+        AUTH_MODE="none",
+        OKTA_ENVIRONMENTS="test=https://a.example.test,live=https://b.example.test",
+    )
+    html = module.app.test_client().get("/").get_data(as_text=True)
+    assert 'value="test" checked' in html
+    assert 'value="live"' in html
+    assert 'value="dev"' not in html
+    assert 'value="prod"' not in html
+    assert module.DEFAULT_ENV == "test"
+
+
 def test_app_refuses_to_start_without_okta_environments(load_app, monkeypatch):
     module = load_app(AUTH_MODE="none")  # sets the variable; now remove it
     monkeypatch.delenv("OKTA_ENVIRONMENTS")

@@ -101,9 +101,9 @@
             <fieldset style="margin:0">
                 <legend>Target Environment</legend>
                 <div class="env-switch">
-                    <label><input type="radio" name="env" value="dev" checked><span>DEV</span></label>
-                    <label><input type="radio" name="env" value="stg"><span>STG</span></label>
-                    <label><input type="radio" name="env" value="prod"><span>PROD</span></label>
+                    {% for env_name in environments %}
+                    <label><input type="radio" name="env" value="{{ env_name }}"{% if loop.first %} checked{% endif %}><span>{{ env_name | upper }}</span></label>
+                    {% endfor %}
                 </div>
             </fieldset>
 
