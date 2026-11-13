@@ -6,6 +6,8 @@
 # Analytics Reader role on that workspace so the /logs page can query KQL.
 #
 # Required env vars (or interactive prompts):
+#   OKTA_ENVIRONMENTS          (name=URL,... ; the token secrets below assume the
+#                               names dev, stg and prod; edit them for other names)
 #   OKTA_DEV_TOKEN, OKTA_STG_TOKEN, OKTA_PROD_TOKEN
 #   OIDC_CLIENT_ID_VAL         (PROD Okta "Admin SSO App" app client_id)
 #   OIDC_CLIENT_SECRET_VAL     (PROD Okta "Admin SSO App" app client_secret)
@@ -74,6 +76,7 @@ SECRETS=(
   "la-workspace-key=$LA_WORKSPACE_KEY"
 )
 ENV_VARS=(
+  "OKTA_ENVIRONMENTS=${OKTA_ENVIRONMENTS:?set OKTA_ENVIRONMENTS (name=URL,...) first}"
   "OKTA_DEV_API_TOKEN=secretref:okta-dev-token"
   "OKTA_STG_API_TOKEN=secretref:okta-stg-token"
   "OKTA_PROD_API_TOKEN=secretref:okta-prod-token"

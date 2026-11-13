@@ -93,12 +93,18 @@ load_dotenv(Path(__file__).parent / ".env")
 
 sys.path.insert(0, str(Path(__file__).parent))
 from okta_saml_import import (
-    OKTA_ADMIN_ENVIRONMENTS,
     OktaClient,
+    get_okta_environments,
     load_cert,
     parse_config,
 )
-from settings import resolve_auth_mode, safe_next
+from settings import (
+    is_user_allowed,
+    resolve_auth_mode,
+    safe_next,
+    same_origin,
+    split_list,
+)
 from wes_tools_docs import register_howto
 
 # Errors an Okta call or a config parse can raise; anything else is a bug and
@@ -114,6 +120,21 @@ _ZIP_ERRORS = (
     zlib.error,
     EOFError,
 )
+
+
+
+def _client_error(context: str, exc: BaseException) -> str:
+    """Log the full error server-side; return a fixed message safe for clients.
+
+    Clients never get exception text, Okta response bodies or server paths.
+    """
+    log.warning("%s: %r", context, exc, exc_info=True)
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    if status:
+        return f"{context} (HTTP {status})"
+    return context
+
 
 try:
     from llm_client import ask_stream as llm_ask_stream
@@ -131,7 +152,12 @@ OIDC_ISSUER = os.environ.get("OIDC_ISSUER", "").rstrip("/")
 OIDC_CLIENT_ID = os.environ.get("OIDC_CLIENT_ID", "")
 OIDC_CLIENT_SECRET = os.environ.get("OIDC_CLIENT_SECRET", "")
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:5001").rstrip("/")
-OIDC_SCOPES = "openid email profile"
+OKTA_ADMIN_ENVIRONMENTS = get_okta_environments()
+# Optional allow-lists (comma-separated). When either is set, only matching
+# users may sign in. Groups are read from the "groups" claim.
+ALLOWED_USERS = split_list(os.environ.get("ALLOWED_USERS"))
+ALLOWED_GROUPS = split_list(os.environ.get("ALLOWED_GROUPS"))
+OIDC_SCOPES = "openid email profile" + (" groups" if ALLOWED_GROUPS else "")
 OIDC_ENABLED = AUTH_MODE == "oidc"
 
 if not OIDC_ENABLED:
@@ -175,6 +201,11 @@ PUBLIC_PATHS = {
 
 @app.before_request
 def _auth_gate():
+    # CSRF: state-changing requests must come from this site's own pages.
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and not same_origin(
+        request.headers, request.host_url
+    ):
+        return jsonify(error="cross-site request rejected"), 403
     if not OIDC_ENABLED:
         return
     if request.path.startswith("/static/") or request.path in PUBLIC_PATHS:
@@ -371,6 +402,13 @@ def oidc_callback():
     if not email:
         session["login_error"] = "Email claim missing in id_token."
         return redirect(url_for("login"))
+    groups = claims.get("groups") or []
+    if isinstance(groups, str):
+        groups = [groups]
+    if not is_user_allowed(email, groups, ALLOWED_USERS, ALLOWED_GROUPS):
+        log.warning("Sign-in refused: user not on the allow-list")
+        session["login_error"] = "access_denied"
+        return redirect(url_for("login"))
     session["user"] = {
         "email": email,
         "name": claims.get("name"),
@@ -429,12 +467,12 @@ def api_upload():
             for member in zf.infolist():
                 # Defend against path traversal
                 target = (extract_dir / member.filename).resolve()
-                if not str(target).startswith(str(extract_dir.resolve())):
+                if not target.is_relative_to(extract_dir.resolve()):
                     raise RuntimeError(f"unsafe path in zip: {member.filename}")
             zf.extractall(extract_dir)
     except _ZIP_ERRORS as e:
         shutil.rmtree(sdir, ignore_errors=True)
-        return jsonify({"error": f"unzip failed: {e}"}), 400
+        return jsonify({"error": _client_error("unzip failed: invalid or unsafe archive", e)}), 400
 
     # Find the export root — the zip may contain a single top-level folder
     entries = [p for p in extract_dir.iterdir() if not p.name.startswith(".")]
@@ -466,12 +504,12 @@ def _resolve_input_dir(input_dir: str, session_id: str) -> tuple[str | None, str
         if not p:
             return None, "upload session not found or expired — please re-upload"
         if not Path(p).is_dir():
-            return None, f"session path missing: {p}"
+            return None, "upload session folder is missing — please re-upload"
         return p, None
     if not input_dir:
         return None, "input_dir or session_id is required"
     if not Path(input_dir).is_dir():
-        return None, f"Directory not found: {input_dir}"
+        return None, "Directory not found"
     return input_dir, None
 
 
@@ -490,7 +528,7 @@ def api_browse():
         path = result.stdout.strip().rstrip("/")
         return jsonify({"path": path or ""}), 200
     except (OSError, subprocess.SubprocessError) as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": _client_error("folder picker failed", e)}), 500
 
 
 @app.route("/api/policies")
@@ -507,7 +545,7 @@ def api_policies():
         policies = client.list_access_policies()
         return jsonify(policies)
     except _OKTA_ERRORS as e:
-        return jsonify({"error": str(e)}), 502
+        return jsonify({"error": _client_error("Could not list policies", e)}), 502
 
 
 @app.route("/api/routing-rules")
@@ -524,7 +562,7 @@ def api_routing_rules():
         rules = client.list_idp_routing_rules()
         return jsonify(rules)
     except _OKTA_ERRORS as e:
-        return jsonify({"error": str(e)}), 502
+        return jsonify({"error": _client_error("Could not list routing rules", e)}), 502
 
 
 @app.route("/api/scan")
@@ -550,7 +588,7 @@ def api_scan():
     try:
         okta_apps = client.get_all_apps()
     except _OKTA_ERRORS as e:
-        return jsonify({"error": f"Failed to fetch apps from Okta: {e}"}), 502
+        return jsonify({"error": _client_error("Failed to fetch apps from Okta", e)}), 502
 
     try:
         app_policy_map = client.get_app_policy_map()
@@ -574,7 +612,8 @@ def api_scan():
         try:
             cfg = parse_config(config_files[0])
         except _PARSE_ERRORS as e:
-            results.append({"folder": folder.name, "app_name": folder.name, "parse_error": str(e)})
+            results.append({"folder": folder.name, "app_name": folder.name,
+                            "parse_error": _client_error("could not parse config", e)})
             continue
 
         app_name = cfg["app_name"] or folder.name
@@ -645,7 +684,7 @@ def api_toggle_status():
         new_status = "ACTIVE" if action == "activate" else "INACTIVE"
         return jsonify({"status": new_status})
     except _OKTA_ERRORS as e:
-        return jsonify({"error": str(e)}), 502
+        return jsonify({"error": _client_error("Status change failed", e)}), 502
 
 
 @app.route("/api/import", methods=["POST"])
@@ -738,9 +777,10 @@ def api_import():
             try:
                 cfg = parse_config(config_files[0])
             except _PARSE_ERRORS as e:
-                yield emit("log", level="error", msg=f"[{folder_name}] Parse error: {e}")
+                perr_msg = _client_error("Could not parse the config", e)
+                yield emit("log", level="error", msg=f"[{folder_name}] {perr_msg}")
                 counts["error"] += 1
-                yield emit("progress", app=folder_name, status="error", msg=f"Parse error: {e}")
+                yield emit("progress", app=folder_name, status="error", msg=perr_msg)
                 continue
 
             app_name = cfg["app_name"] or folder_name
@@ -750,9 +790,10 @@ def api_import():
             try:
                 existing = client.find_app_by_label(app_name)
             except _OKTA_ERRORS as e:
-                yield emit("log", level="error", msg=f"  ERROR looking up app in Okta: {e}")
+                lookup_msg = _client_error("Okta lookup failed", e)
+                yield emit("log", level="error", msg=f"  ERROR: {lookup_msg}")
                 counts["error"] += 1
-                yield emit("progress", app=app_name, status="error", msg=f"Okta lookup failed: {e}")
+                yield emit("progress", app=app_name, status="error", msg=lookup_msg)
                 continue
 
             if existing:
@@ -770,14 +811,14 @@ def api_import():
                         client.assign_policy_to_app(okta_id, policy_id)
                         yield emit("log", level="info", msg="  Auth policy assigned")
                     except req_lib.HTTPError as e:
-                        body = e.response.text if e.response is not None else str(e)
+                        body = _client_error("Okta call failed", e)
                         yield emit("log", level="warn", msg=f"  Error assigning policy: {body}")
                 if routing_rule_id and routing_policy_id:
                     try:
                         client.add_app_to_routing_rule(routing_policy_id, routing_rule_id, okta_id)
                         yield emit("log", level="info", msg="  IDP routing rule assigned")
                     except req_lib.HTTPError as e:
-                        body = e.response.text if e.response is not None else str(e)
+                        body = _client_error("Okta call failed", e)
                         yield emit("log", level="warn", msg=f"  Error assigning routing rule: {body}")
                 for gname in cfg.get("assign_groups", []):
                     grp = client.find_group_by_name(gname)
@@ -786,7 +827,7 @@ def api_import():
                             client.assign_group_to_app(okta_id, grp["id"])
                             yield emit("log", level="info", msg=f"  Assigned group '{gname}'")
                         except req_lib.HTTPError as e:
-                            body = e.response.text if e.response is not None else str(e)
+                            body = _client_error("Okta call failed", e)
                             yield emit("log", level="warn", msg=f"  Error assigning '{gname}': {body}")
                 if cfg["assign_everyone"]:
                     grp = client.find_group_by_name("Everyone")
@@ -795,7 +836,7 @@ def api_import():
                             client.assign_group_to_app(okta_id, grp["id"])
                             yield emit("log", level="info", msg="  Assigned group 'Everyone'")
                         except req_lib.HTTPError as e:
-                            body = e.response.text if e.response is not None else str(e)
+                            body = _client_error("Okta call failed", e)
                             yield emit("log", level="warn", msg=f"  Error assigning 'Everyone': {body}")
                 counts["created"] += 1
                 yield emit("progress", app=app_name, status="updated", okta_id=okta_id)
@@ -824,20 +865,16 @@ def api_import():
                 okta_id = result.get("id")
                 yield emit("log", level="info", msg=f"  CREATED → id={okta_id}")
             except req_lib.HTTPError as e:
-                body = e.response.text if e.response is not None else str(e)
-                yield emit("log", level="error", msg=f"  ERROR: {body}")
+                short_msg = _client_error("Okta rejected the app", e)
+                yield emit("log", level="error", msg=f"  ERROR: {short_msg}")
                 counts["error"] += 1
-                try:
-                    err_json = json.loads(body)
-                    short_msg = err_json.get("errorSummary") or err_json.get("errorCode") or body[:120]
-                except ValueError:
-                    short_msg = body[:120]
                 yield emit("progress", app=app_name, status="error", msg=short_msg)
                 continue
             except _OKTA_ERRORS as e:
-                yield emit("log", level="error", msg=f"  ERROR (unexpected): {e}")
+                short_msg = _client_error("Unexpected error creating the app", e)
+                yield emit("log", level="error", msg=f"  ERROR: {short_msg}")
                 counts["error"] += 1
-                yield emit("progress", app=app_name, status="error", msg=str(e)[:120])
+                yield emit("progress", app=app_name, status="error", msg=short_msg)
                 continue
 
             if policy_id:
@@ -845,7 +882,7 @@ def api_import():
                     client.assign_policy_to_app(okta_id, policy_id)
                     yield emit("log", level="info", msg="  Auth policy assigned")
                 except req_lib.HTTPError as e:
-                    body = e.response.text if e.response is not None else str(e)
+                    body = _client_error("Okta call failed", e)
                     yield emit("log", level="warn", msg=f"  Error assigning policy: {body}")
 
             if routing_rule_id and routing_policy_id:
@@ -853,7 +890,7 @@ def api_import():
                     client.add_app_to_routing_rule(routing_policy_id, routing_rule_id, okta_id)
                     yield emit("log", level="info", msg="  IDP routing rule assigned")
                 except req_lib.HTTPError as e:
-                    body = e.response.text if e.response is not None else str(e)
+                    body = _client_error("Okta call failed", e)
                     yield emit("log", level="warn", msg=f"  Error assigning routing rule: {body}")
 
             for label, gid in groups_to_assign:
@@ -861,7 +898,7 @@ def api_import():
                     client.assign_group_to_app(okta_id, gid)
                     yield emit("log", level="info", msg=f"  Assigned group '{label}'")
                 except req_lib.HTTPError as e:
-                    body = e.response.text if e.response is not None else str(e)
+                    body = _client_error("Okta call failed", e)
                     yield emit("log", level="warn", msg=f"  Error assigning '{label}': {body}")
 
             counts["created"] += 1
@@ -934,7 +971,7 @@ def api_analyze_scan():
             except (RuntimeError, OSError, ValueError, IndexError) as e:
                 # Streaming can fail on timeouts, dropped connections or a malformed line.
                 log.warning("LLM stream failed: %s", e)
-                yield f"data: {json.dumps({'type': 'error', 'msg': str(e)})}\n\n"
+                yield f"data: {json.dumps({'type': 'error', 'msg': 'AI analysis failed — see server log'})}\n\n"
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
     return Response(
@@ -1007,9 +1044,9 @@ def api_logs_list():
                     "app_count": len((r.get("apps_requested_s") or "").split(",")) if r.get("apps_requested_s") else 0,
                 })
             return jsonify(out)
-        except Exception as e:
+        except Exception:
             log.exception("LA query failed; returning empty list")
-            return jsonify({"error": str(e)}), 502
+            return jsonify({"error": "Run log query failed"}), 502
 
     # Local-dev fallback: legacy JSON files
     files = []
@@ -1080,9 +1117,9 @@ def api_logs_get(run_id):
                 "summary":        summary or {},
                 "events":         events,
             })
-        except Exception as e:
+        except Exception:
             log.exception("LA query failed")
-            return jsonify({"error": str(e)}), 502
+            return jsonify({"error": "Run log query failed"}), 502
 
     # Local-dev fallback: legacy JSON file by filename
     path = (LOG_DIR / run_id).resolve()
@@ -1093,7 +1130,7 @@ def api_logs_get(run_id):
     try:
         return jsonify(json.loads(path.read_text()))
     except (OSError, ValueError) as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": _client_error("Could not read run log", e)}), 500
 
 
 # ---------------------------------------------------------------------------

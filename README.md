@@ -70,11 +70,25 @@ missing or the server is down.
 
 ## Configuration
 
-**Okta API tokens** — one per environment, stored in the OS keyring by
-`python setup_tokens.py` (`OKTA_DEV_API_TOKEN`, `OKTA_STG_API_TOKEN`,
-`OKTA_PROD_API_TOKEN`); in Azure Container Apps the same names are secrets
-injected as environment variables. Org URLs live in the
-`OKTA_ADMIN_ENVIRONMENTS` dict in `okta_saml_import.py`.
+**Okta orgs (required, no default)** — `OKTA_ENVIRONMENTS`, a list of
+`name=URL` pairs of any length, for example
+`dev=https://your-dev-org.example.com,prod=https://your-prod-org.example.com`.
+This is the one source for the web UI, the CLI `--env` choices and
+`adfs-to-okta-setup-tokens`. Startup fails naming the setting when it is unset.
+
+**Okta API tokens** — one per name, `OKTA_<NAME>_API_TOKEN` (for the name
+`dev`: `OKTA_DEV_API_TOKEN`), taken from the environment or, optionally, the OS
+keyring (`adfs-to-okta-setup-tokens`); in Azure Container Apps they are
+secrets injected as environment variables.
+
+**Who may sign in (optional)** — `ALLOWED_USERS` and `ALLOWED_GROUPS`
+(comma-separated, default empty = any user the Okta app lets in). When either
+is set, only those emails or members of those groups (the `groups` claim) are
+admitted. Every POST must carry an `Origin` (or `Referer`) header that matches
+the site, otherwise it is rejected with 403 (CSRF protection).
+
+**Input folder** — `ADFS_EXPORT_DIR` (default empty): pre-fills the folder
+path in the local UI.
 
 **Sign-in gate** — `AUTH_MODE` (`oidc` by default, or `none`),
 `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `APP_BASE_URL`,
@@ -100,12 +114,16 @@ Every setting is listed in `.env.example`.
 
 Type: web service with a command-line importer.
 
+Copy `.env.example` to `.env`, fill it in, then run the service:
+
 ```bash
-pip install -e .
-adfs-to-okta-setup-tokens       # once per machine (optional keyring)
-python app.py                   # http://localhost:5001 (set AUTH_MODE=none locally)
-adfs-to-okta --env dev --input-dir <export> --dry-run   # CLI importer
+docker compose up               # http://localhost:8080
 ```
+
+Without Docker: `pip install -e . && python app.py` (port 5001; set
+`AUTH_MODE=none` for local use). The command-line importer is
+`adfs-to-okta --input-dir <export> --dry-run` (`--env` picks one of the names
+in `OKTA_ENVIRONMENTS`).
 
 Tests: `pip install -e ".[dev]" && pytest`.
 
@@ -120,9 +138,10 @@ Real, known, in the order I intend to fix them.
 - **Upload sessions are in-process memory.** The container therefore runs one
   gunicorn worker; do not scale to more workers or replicas until uploads are
   resolved from shared storage.
-- **Okta org URLs are a fixed dev/stg/prod table** in `okta_saml_import.py`
-  (placeholders in this snapshot); they are not yet environment settings.
-- **Lockfile, formatter run and CI workflow are not yet in place.**
+- **No lockfile yet**; dependencies have version ranges only. Several
+  legacy modules are still excluded from the formatter (`pyproject.toml`).
+- **`wes_tools_http.py` and `wes_tools_docs.py` are local copies** with no
+  upstream package; they are maintained in this repository.
 - **Apps whose ADFS assignment can't be parsed default to Everyone** on
   import (Custom Policy trusts, lookup errors). The scan flags them for
   review; the import does not yet refuse them.
@@ -133,8 +152,8 @@ Real, known, in the order I intend to fix them.
 - The AI panel's HTML is built with `innerHTML`; app names from the export
   should be escaped.
 - Tests cover the config parser, settings checks, the auth gate, redirect
-  validation and Okta/LLM client error paths; the import and scan routes are
-  not yet covered.
+  validation, CSRF and allow-list checks, zip handling, and Okta/LLM client
+  error paths; the full import stream is not yet covered.
 
 ## Version
 

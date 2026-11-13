@@ -10,3 +10,9 @@ description = "Fake test values"
 condition = "AND"
 paths = ['''tests/test_app\.py''']
 regexes = ['''test-secret-not-real''', '''test-key-not-real''']
+
+[[allowlists]]
+description = "Fake test values (settings tests)"
+condition = "AND"
+paths = ['''tests/test_settings\.py''']
+regexes = ['''test-secret-not-real''', '''test-key-not-real''']

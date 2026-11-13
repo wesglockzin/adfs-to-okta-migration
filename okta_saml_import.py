@@ -1,7 +1,7 @@
 """
 okta_saml_import.py
 ====================
-Reads ADFS export folders produced by Export-ADFSRelyingPartyTrusts_v5.ps1
+Reads ADFS export folders produced by scripts/Export-ADFSRelyingPartyTrusts.ps1
 and creates Okta SAML 2.0 apps via the Okta Apps API.
 
 Usage:
@@ -10,11 +10,11 @@ Usage:
   python okta_saml_import.py --input-dir /path/to/... --app "Example App"
 
 Environment variables (or .env file):
-  OKTA_ORG_URL      e.g. https://host.example.gov
-  OKTA_API_TOKEN    Okta API token with app create + cert upload permissions
+  OKTA_ENVIRONMENTS  name=URL pairs, e.g. dev=https://your-org.example.com,prod=https://...
+  OKTA_<NAME>_API_TOKEN  Okta API token for each name (app create + cert upload)
 
 Options:
-  --env dev|stg|prod  Target Okta environment (default: dev)
+  --env NAME          Target Okta environment, one of OKTA_ENVIRONMENTS (default: the first)
   --input-dir DIR     Root ADFS export folder (required)
   --app NAME          Process only one app by folder/app name (optional)
   --dry-run           Preview actions, no API calls
@@ -36,19 +36,18 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
+from settings import ConfigError, parse_okta_environments
 from wes_tools_http import make_session
 
 APP_VERSION = "1.0.0"
 
 # ---------------------------------------------------------------------------
-# Environment config — mirrors OKTA_ENVIRONMENTS pattern from sso_tester_logic.py
+# Environment config — one source: the OKTA_ENVIRONMENTS setting
 # ---------------------------------------------------------------------------
 
-OKTA_ADMIN_ENVIRONMENTS = {
-    "dev":  {"url": "https://host.example.gov",     "token_var": "OKTA_DEV_API_TOKEN"},
-    "stg":  {"url": "https://host.example.gov", "token_var": "OKTA_STG_API_TOKEN"},
-    "prod": {"url": "https://host.example.gov",         "token_var": "OKTA_PROD_API_TOKEN"},
-}
+def get_okta_environments() -> dict[str, dict[str, str]]:
+    """Return {name: {"url", "token_var"}} from OKTA_ENVIRONMENTS (any length)."""
+    return parse_okta_environments(os.environ)
 
 # ---------------------------------------------------------------------------
 # Logging setup
@@ -582,10 +581,14 @@ def import_app(folder: Path, client: OktaClient, skip_certs: bool, skip_signing_
 
 def main():
     load_dotenv()
+    try:
+        environments = get_okta_environments()
+    except ConfigError as e:
+        sys.exit(str(e))
 
     parser = argparse.ArgumentParser(description="Import ADFS RPT configs into Okta as SAML 2.0 apps")
-    parser.add_argument("--env", choices=OKTA_ADMIN_ENVIRONMENTS.keys(), default="dev",
-                        help="Target Okta environment (default: dev)")
+    parser.add_argument("--env", choices=list(environments), default=next(iter(environments)),
+                        help="Target Okta environment (default: the first in OKTA_ENVIRONMENTS)")
     parser.add_argument("--input-dir", required=True, help="Root ADFS export folder")
     parser.add_argument("--app", help="Process only this app (folder name or app name)")
     parser.add_argument("--dry-run", action="store_true", help="Preview only, no API calls")
@@ -603,8 +606,7 @@ def main():
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # Resolve environment config (mirrors Federated tool's OKTA_ENVIRONMENTS pattern)
-    env_cfg = OKTA_ADMIN_ENVIRONMENTS[args.env]
+    env_cfg = environments[args.env]
     org_url = env_cfg["url"]
     token_var = env_cfg["token_var"]
     api_token = os.environ.get(token_var, "").strip()
