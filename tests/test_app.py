@@ -82,6 +82,17 @@ def test_login_keeps_relative_next(load_app):
         assert sess["post_login_redirect"] == "/logs"
 
 
+def test_login_page_hides_raw_provider_error(load_app):
+    client = load_app(**OIDC_ENV).app.test_client()
+    resp = client.get("/oidc/callback?error=server_error&error_description=secret-detail-xyz")
+    assert resp.status_code == 302
+    page = client.get("/login")
+    body = page.get_data(as_text=True)
+    assert "secret-detail-xyz" not in body
+    assert "server_error" not in body
+    assert "Sign-in failed" in body
+
+
 @pytest.mark.parametrize("failure", [zlib.error("bad data"), EOFError("short")])
 def test_corrupt_zip_returns_400_and_removes_temp_folder(
     load_app, monkeypatch, tmp_path, failure

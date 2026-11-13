@@ -309,9 +309,8 @@ LOGIN_HTML = """<!doctype html>
  a.btn{display:inline-block;background:#22c55e;color:#0f172a;text-decoration:none;padding:10px 22px;border-radius:8px;font-weight:600}
  a.btn:hover{background:#16a34a;color:#fff}
  .err{color:#fca5a5;font-size:12px;margin-top:16px}
- .vpn{background:#1f2937;border:1px solid #f59e0b;color:#fbbf24;font-size:13px;margin-top:20px;padding:12px 14px;border-radius:8px;text-align:left;line-height:1.5}
- .vpn b{color:#fde68a}
- .vpn .raw{display:block;color:#94a3b8;font-size:11px;margin-top:8px;font-family:ui-monospace,Menlo,monospace;word-break:break-word}
+ .denied{background:#1f2937;border:1px solid #f59e0b;color:#fbbf24;font-size:13px;margin-top:20px;padding:12px 14px;border-radius:8px;text-align:left;line-height:1.5}
+ .denied b{color:#fde68a}
  footer{position:fixed;bottom:16px;left:0;right:0;text-align:center;font-size:11px;color:#475569}
 </style></head><body>
 <div class="card">
@@ -320,7 +319,7 @@ LOGIN_HTML = """<!doctype html>
  <a class="btn" href="/oidc/login">Sign in</a>
  {% if error %}
    {% if 'access_denied' in error %}
-   <div class="vpn"><b>Access denied.</b> Your account may not be assigned to this app, or sign-in is restricted by network. Check with your administrator, then click Sign in again.<span class="raw">{{ error }}</span></div>
+   <div class="denied"><b>Access denied.</b> Your account may not be assigned to this app, or sign-in is restricted by network. Check with your administrator, then click Sign in again.</div>
    {% else %}<div class="err">{{ error }}</div>{% endif %}
  {% endif %}
 </div>
@@ -351,13 +350,21 @@ def oidc_login():
 @app.get("/oidc/callback")
 def oidc_callback():
     if request.args.get("error"):
-        session["login_error"] = f"{request.args.get('error')}: {request.args.get('error_description', '')}"
+        log.warning(
+            "OIDC sign-in error from provider: %s: %s",
+            request.args.get("error"),
+            request.args.get("error_description", ""),
+        )
+        if request.args.get("error") == "access_denied":
+            session["login_error"] = "access_denied"
+        else:
+            session["login_error"] = "Sign-in failed. Try again or ask your administrator."
         return redirect(url_for("login"))
     try:
         token = oauth.okta.authorize_access_token()
-    except Exception as e:
+    except Exception:  # noqa: BLE001 - last-resort boundary; logged, client gets a generic message
         log.exception("OIDC token exchange failed")
-        session["login_error"] = f"token exchange failed: {e}"
+        session["login_error"] = "Sign-in failed. Try again or ask your administrator."
         return redirect(url_for("login"))
     claims = token.get("userinfo") or {}
     email = claims.get("email") or claims.get("preferred_username")
