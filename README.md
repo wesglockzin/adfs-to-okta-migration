@@ -138,7 +138,8 @@ Real, known, in the order I intend to fix them.
 - **Upload sessions are in-process memory.** The container therefore runs one
   gunicorn worker; do not scale to more workers or replicas until uploads are
   resolved from shared storage.
-- **No lockfile yet**; dependencies have version ranges only. Several
+- **The lockfile `uv.lock` is written by CI** from the `[project]`
+  dependencies; CI checks it with `uv lock --check`. Several
   legacy modules are still excluded from the formatter (`pyproject.toml`).
 - **Apps whose ADFS assignment can't be parsed default to Everyone** on
   import (Custom Policy trusts, lookup errors). The scan flags them for
