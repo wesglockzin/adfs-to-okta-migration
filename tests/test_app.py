@@ -95,6 +95,35 @@ def test_login_page_hides_raw_provider_error(load_app):
     assert "Sign-in failed" in body
 
 
+def test_login_page_shows_access_denied_notice_without_raw_text(load_app):
+    client = load_app(**OIDC_ENV).app.test_client()
+    client.get("/oidc/callback?error=access_denied&error_description=raw-detail-xyz")
+    body = client.get("/login").get_data(as_text=True)
+    assert "Access denied" in body
+    assert "raw-detail-xyz" not in body
+
+
+def test_token_exchange_failure_hides_exception_text(load_app, monkeypatch):
+    module = load_app(**OIDC_ENV)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("token-endpoint-detail-xyz")
+
+    monkeypatch.setattr(module.oauth.okta, "authorize_access_token", boom)
+    client = module.app.test_client()
+    resp = client.get("/oidc/callback?code=x&state=y")
+    assert resp.status_code == 302
+    body = client.get("/login").get_data(as_text=True)
+    assert "token-endpoint-detail-xyz" not in body
+    assert "Sign-in failed" in body
+
+
+def test_provider_error_log_cannot_forge_lines(load_app, caplog):
+    client = load_app(**OIDC_ENV).app.test_client()
+    client.get("/oidc/callback?error=x&error_description=ok%0AINFO forged line")
+    assert all("\n" not in r.getMessage() for r in caplog.records)
+
+
 @pytest.mark.parametrize("failure", [zlib.error("bad data"), EOFError("short")])
 def test_corrupt_zip_returns_400_and_removes_temp_folder(
     load_app, monkeypatch, tmp_path, failure

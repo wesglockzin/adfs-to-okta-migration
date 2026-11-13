@@ -318,7 +318,7 @@ LOGIN_HTML = """<!doctype html>
  <p>Sign in with your work email to continue.</p>
  <a class="btn" href="/oidc/login">Sign in</a>
  {% if error %}
-   {% if 'access_denied' in error %}
+   {% if error == 'access_denied' %}
    <div class="denied"><b>Access denied.</b> Your account may not be assigned to this app, or sign-in is restricted by network. Check with your administrator, then click Sign in again.</div>
    {% else %}<div class="err">{{ error }}</div>{% endif %}
  {% endif %}
@@ -351,9 +351,9 @@ def oidc_login():
 def oidc_callback():
     if request.args.get("error"):
         log.warning(
-            "OIDC sign-in error from provider: %s: %s",
-            request.args.get("error"),
-            request.args.get("error_description", ""),
+            "OIDC sign-in error from provider: %r: %r",
+            request.args.get("error", "")[:100],
+            request.args.get("error_description", "")[:200],
         )
         if request.args.get("error") == "access_denied":
             session["login_error"] = "access_denied"
@@ -362,7 +362,7 @@ def oidc_callback():
         return redirect(url_for("login"))
     try:
         token = oauth.okta.authorize_access_token()
-    except Exception:
+    except Exception:  # noqa: BLE001 - last-resort boundary; logged, user sees a generic message
         log.exception("OIDC token exchange failed")
         session["login_error"] = "Sign-in failed. Try again or ask your administrator."
         return redirect(url_for("login"))

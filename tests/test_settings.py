@@ -4,9 +4,9 @@ from settings import ConfigError, resolve_auth_mode, safe_next
 
 FULL = {
     "OIDC_ISSUER": "https://issuer.example.test",
-    "OIDC_CLIENT_ID": "id",
-    "OIDC_CLIENT_SECRET": "secret",
-    "FLASK_SECRET_KEY": "key",
+    "OIDC_CLIENT_ID": "test-id-not-real",
+    "OIDC_CLIENT_SECRET": "test-secret-not-real",
+    "FLASK_SECRET_KEY": "test-key-not-real",
 }
 
 
