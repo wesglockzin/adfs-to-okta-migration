@@ -98,6 +98,7 @@ def main():
             "input_dir":      data.get("input_dir", ""),
             "apps_requested": ",".join(apps_requested),
             "summary_created": int(summary.get("created", 0)),
+            "summary_updated": int(summary.get("updated", 0)),
             "summary_skipped": int(summary.get("skipped", 0)),
             "summary_error":   int(summary.get("error", 0)),
             "backfilled":      True,

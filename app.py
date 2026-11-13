@@ -1026,7 +1026,8 @@ def api_logs_list():
                 "| where kind_s == 'summary' "
                 "| project ts_t, run_id_s, env_s, "
                 "  apps_requested_s, "
-                "  summary_created_d, summary_skipped_d, summary_error_d, "
+                "  summary_created_d, summary_updated_d, "
+                "  summary_skipped_d, summary_error_d, "
                 "  input_dir_s "
                 "| order by ts_t desc "
                 "| take 200"
@@ -1040,6 +1041,7 @@ def api_logs_list():
                     "env":       r.get("env_s") or "",
                     "summary":   {
                         "created": int(r.get("summary_created_d") or 0),
+                        "updated": int(r.get("summary_updated_d") or 0),
                         "skipped": int(r.get("summary_skipped_d") or 0),
                         "error":   int(r.get("summary_error_d") or 0),
                     },
@@ -1078,7 +1080,8 @@ def api_logs_get(run_id):
                 f"| where run_id_s == '{run_id}' "
                 "| project ts_t, kind_s, evt_s, level_s, msg_s, app_s, status_s, "
                 "  okta_id_s, env_s, input_dir_s, apps_requested_s, "
-                "  summary_created_d, summary_skipped_d, summary_error_d "
+                "  summary_created_d, summary_updated_d, "
+                "  summary_skipped_d, summary_error_d "
                 "| order by ts_t asc"
             )
             rows = _query_la(kql)
@@ -1093,6 +1096,7 @@ def api_logs_get(run_id):
                 if r.get("kind_s") == "summary":
                     summary = {
                         "created": int(r.get("summary_created_d") or 0),
+                        "updated": int(r.get("summary_updated_d") or 0),
                         "skipped": int(r.get("summary_skipped_d") or 0),
                         "error":   int(r.get("summary_error_d") or 0),
                     }

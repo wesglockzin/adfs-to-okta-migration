@@ -658,7 +658,7 @@
         for (const r of sessionResults) {
             const tr = document.createElement('tr');
             tr.appendChild(tdText(r.app));
-            const cls = r.status === 'created' ? 'chip-ok'
+            const cls = (r.status === 'created' || r.status === 'updated') ? 'chip-ok'
                       : r.status === 'error'   ? 'chip-bad'
                       : 'chip-warn';
             tr.appendChild(tdChip(r.status, cls));

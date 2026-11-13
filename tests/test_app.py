@@ -356,6 +356,34 @@ def test_import_http_error_is_streamed_without_body(
     assert OKTA_BODY not in body
 
 
+def test_run_history_from_log_analytics_carries_updated_count(
+    failing_okta, monkeypatch
+):
+    queries = []
+    row = {
+        "run_id_s": "abc",
+        "env_s": "dev",
+        "kind_s": "summary",
+        "summary_created_d": 0,
+        "summary_updated_d": 3,
+        "summary_skipped_d": 0,
+        "summary_error_d": 0,
+    }
+
+    def fake_query(kql, days=365):
+        queries.append(kql)
+        return [row]
+
+    monkeypatch.setattr(failing_okta, "LA_QUERY_ENABLED", True)
+    monkeypatch.setattr(failing_okta, "_query_la", fake_query)
+    client = failing_okta.app.test_client()
+    listing = client.get("/api/logs").get_json()
+    detail = client.get("/api/logs/abc").get_json()
+    assert listing[0]["summary"]["updated"] == 3
+    assert detail["summary"]["updated"] == 3
+    assert all("summary_updated_d" in q for q in queries)
+
+
 def test_import_counts_updated_apps_separately(failing_okta, monkeypatch, tmp_path):
     folder = tmp_path / "app1"
     folder.mkdir()

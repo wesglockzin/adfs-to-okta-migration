@@ -180,9 +180,10 @@
                 <div class="run-meta">${envLabel} &mdash; ${r.app_count} app${r.app_count !== 1 ? 's' : ''}</div>
                 <div class="run-chips">
                     ${s.created  ? `<span class="chip chip-ok">Created: ${s.created}</span>` : ''}
+                    ${s.updated  ? `<span class="chip chip-ok">Updated: ${s.updated}</span>` : ''}
                     ${s.skipped  ? `<span class="chip chip-warn">Skipped: ${s.skipped}</span>` : ''}
                     ${s.error    ? `<span class="chip chip-bad">Errors: ${s.error}</span>` : ''}
-                    ${!s.created && !s.skipped && !s.error ? '<span class="chip">No results</span>' : ''}
+                    ${!s.created && !s.updated && !s.skipped && !s.error ? '<span class="chip">No results</span>' : ''}
                 </div>
             `;
             li.addEventListener('click', () => loadRun(r.filename, li));
@@ -214,6 +215,7 @@
         const s = data.summary || {};
         document.getElementById('detail-chips').innerHTML = `
             ${s.created !== undefined ? `<span class="chip chip-ok">Created: ${s.created}</span>` : ''}
+            ${s.updated ? `<span class="chip chip-ok">Updated: ${s.updated}</span>` : ''}
             ${s.skipped !== undefined ? `<span class="chip chip-warn">Skipped: ${s.skipped}</span>` : ''}
             ${s.error   !== undefined ? `<span class="chip ${s.error ? 'chip-bad' : ''}">Errors: ${s.error}</span>` : ''}
         `;
@@ -274,7 +276,7 @@
             `Run:     ${data.timestamp || ''}`,
             `Env:     ${(data.env || '').toUpperCase()}`,
             `Dir:     ${data.input_dir || ''}`,
-            `Summary: Created=${data.summary?.created ?? 0}  Skipped=${data.summary?.skipped ?? 0}  Errors=${data.summary?.error ?? 0}`,
+            `Summary: Created=${data.summary?.created ?? 0}  Updated=${data.summary?.updated ?? 0}  Skipped=${data.summary?.skipped ?? 0}  Errors=${data.summary?.error ?? 0}`,
             '',
         ];
         for (const evt of (data.events || [])) {
