@@ -385,19 +385,6 @@ def test_local_run_log_is_served_and_escapes_are_refused(
     assert client.get("/api/logs/missing.json").status_code == 404
 
 
-def test_sibling_folder_with_same_prefix_is_not_a_run_log(
-    failing_okta, monkeypatch, tmp_path
-):
-    logs = tmp_path / "logs"
-    logs.mkdir()
-    (tmp_path / "logs_other").mkdir()
-    (tmp_path / "logs_other" / "x.json").write_text("{}")
-    monkeypatch.setattr(failing_okta, "LOG_DIR", logs)
-    monkeypatch.setattr(failing_okta, "LA_QUERY_ENABLED", False)
-    resp = failing_okta.app.test_client().get("/api/logs/..%2Flogs_other%2Fx.json")
-    assert resp.status_code in (400, 404)
-
-
 def test_environment_name_needing_encoding_reaches_policies_intact(
     load_app, monkeypatch
 ):

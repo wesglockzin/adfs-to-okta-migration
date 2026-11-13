@@ -7,7 +7,8 @@
 #
 # Required env vars (or interactive prompts):
 #   OKTA_ENVIRONMENTS          (name=URL,... ; any number of names)
-#   OKTA_<NAME>_API_TOKEN      (one per name in OKTA_ENVIRONMENTS; prompted if unset)
+#   OKTA_<NAME>_API_TOKEN      (one per name in OKTA_ENVIRONMENTS; prompted if unset;
+#                              replaces the old OKTA_DEV_TOKEN / OKTA_STG_TOKEN / OKTA_PROD_TOKEN)
 #   OIDC_CLIENT_ID_VAL         (PROD Okta "Admin SSO App" app client_id)
 #   OIDC_CLIENT_SECRET_VAL     (PROD Okta "Admin SSO App" app client_secret)
 #   OIDC_ISSUER_VAL            (PROD Okta authorization-server issuer URL)
@@ -65,7 +66,7 @@ OKTA_SECRETS=()
 OKTA_ENV_VARS=()
 IFS=',' read -ra OKTA_ENTRIES <<< "$OKTA_ENVIRONMENTS"
 for entry in "${OKTA_ENTRIES[@]}"; do
-  env_name=$(echo "${entry%%=*}" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+  env_name=$(echo "${entry%%=*}" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | tr '[:upper:]' '[:lower:]')
   [ -z "$env_name" ] && continue
   token_var="OKTA_$(echo "$env_name" | tr '[:lower:]' '[:upper:]' | sed -E 's/[^A-Z0-9]/_/g')_API_TOKEN"
   secret_name="okta-$(echo "$env_name" | sed -E 's/[^a-z0-9]+/-/g')-token"

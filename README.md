@@ -143,8 +143,9 @@ Real, known, in the order I intend to fix them.
 - **Apps whose ADFS assignment can't be parsed default to Everyone** on
   import (Custom Policy trusts, lookup errors). The scan flags them for
   review; the import does not yet refuse them.
-- **`run_id` is checked against a character set**, not strictly as 32-hex, so
-  that local-development log file names still open.
+- **`run_id` is checked against a character set** only when Log Analytics
+  queries are enabled (not strictly 32-hex). The local-file path has no
+  character check, only a check that the file lies inside the log folder.
 - **Duplicate-label lookup is a prefix search** (`?q=`, 10 results), so an
   org with many similar labels can miss an exact match and create a duplicate.
 - The AI panel's HTML is built with `innerHTML`; app names from the export
