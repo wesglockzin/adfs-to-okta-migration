@@ -100,6 +100,12 @@ from okta_saml_import import (
 from settings import resolve_auth_mode, safe_next
 from wes_tools_docs import register_howto
 
+# Errors an Okta call or a config parse can raise; anything else is a bug and
+# should surface instead of being reported as an Okta/parse failure.
+_OKTA_ERRORS = (req_lib.RequestException, ValueError, KeyError, OSError)
+_PARSE_ERRORS = (OSError, ValueError, KeyError, IndexError)
+_ZIP_ERRORS = (zipfile.BadZipFile, RuntimeError, OSError, ValueError, NotImplementedError)
+
 try:
     from llm_client import ask_stream as llm_ask_stream
     LLM_AVAILABLE = True
@@ -410,7 +416,7 @@ def api_upload():
                 if not str(target).startswith(str(extract_dir.resolve())):
                     raise RuntimeError(f"unsafe path in zip: {member.filename}")
             zf.extractall(extract_dir)
-    except Exception as e:
+    except _ZIP_ERRORS as e:
         shutil.rmtree(sdir, ignore_errors=True)
         return jsonify({"error": f"unzip failed: {e}"}), 400
 
@@ -463,11 +469,11 @@ def api_browse():
     try:
         result = subprocess.run(
             ["osascript", "-e", script],
-            capture_output=True, text=True, timeout=60
+            capture_output=True, text=True, timeout=60, check=False
         )
         path = result.stdout.strip().rstrip("/")
         return jsonify({"path": path or ""}), 200
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         return jsonify({"error": str(e)}), 500
 
 
@@ -484,7 +490,7 @@ def api_policies():
         client = OktaClient(env_cfg["url"], token)
         policies = client.list_access_policies()
         return jsonify(policies)
-    except Exception as e:
+    except _OKTA_ERRORS as e:
         return jsonify({"error": str(e)}), 502
 
 
@@ -501,7 +507,7 @@ def api_routing_rules():
         client = OktaClient(env_cfg["url"], token)
         rules = client.list_idp_routing_rules()
         return jsonify(rules)
-    except Exception as e:
+    except _OKTA_ERRORS as e:
         return jsonify({"error": str(e)}), 502
 
 
@@ -527,16 +533,18 @@ def api_scan():
 
     try:
         okta_apps = client.get_all_apps()
-    except Exception as e:
+    except _OKTA_ERRORS as e:
         return jsonify({"error": f"Failed to fetch apps from Okta: {e}"}), 502
 
     try:
         app_policy_map = client.get_app_policy_map()
-    except Exception:
+    except _OKTA_ERRORS:
+        log.warning("Could not load app policy map", exc_info=True)
         app_policy_map = {}
     try:
         app_routing_map = client.get_app_routing_rule_map()
-    except Exception:
+    except _OKTA_ERRORS:
+        log.warning("Could not load app routing rule map", exc_info=True)
         app_routing_map = {}
 
     results = []
@@ -549,7 +557,7 @@ def api_scan():
 
         try:
             cfg = parse_config(config_files[0])
-        except Exception as e:
+        except _PARSE_ERRORS as e:
             results.append({"folder": folder.name, "app_name": folder.name, "parse_error": str(e)})
             continue
 
@@ -620,7 +628,7 @@ def api_toggle_status():
             client.deactivate_app(app_id)
         new_status = "ACTIVE" if action == "activate" else "INACTIVE"
         return jsonify({"status": new_status})
-    except Exception as e:
+    except _OKTA_ERRORS as e:
         return jsonify({"error": str(e)}), 502
 
 
@@ -689,8 +697,8 @@ def api_import():
             }
             try:
                 (LOG_DIR / filename).write_text(json.dumps(record, indent=2))
-            except Exception:
-                pass
+            except OSError:
+                log.warning("Could not write run log %s", filename, exc_info=True)
 
         if not token:
             yield emit("log", level="error", msg=f"{env_cfg['token_var']} is not set")
@@ -713,7 +721,7 @@ def api_import():
 
             try:
                 cfg = parse_config(config_files[0])
-            except Exception as e:
+            except _PARSE_ERRORS as e:
                 yield emit("log", level="error", msg=f"[{folder_name}] Parse error: {e}")
                 counts["error"] += 1
                 yield emit("progress", app=folder_name, status="error", msg=f"Parse error: {e}")
@@ -725,7 +733,7 @@ def api_import():
 
             try:
                 existing = client.find_app_by_label(app_name)
-            except Exception as e:
+            except _OKTA_ERRORS as e:
                 yield emit("log", level="error", msg=f"  ERROR looking up app in Okta: {e}")
                 counts["error"] += 1
                 yield emit("progress", app=app_name, status="error", msg=f"Okta lookup failed: {e}")
@@ -806,11 +814,11 @@ def api_import():
                 try:
                     err_json = json.loads(body)
                     short_msg = err_json.get("errorSummary") or err_json.get("errorCode") or body[:120]
-                except Exception:
+                except ValueError:
                     short_msg = body[:120]
                 yield emit("progress", app=app_name, status="error", msg=short_msg)
                 continue
-            except Exception as e:
+            except _OKTA_ERRORS as e:
                 yield emit("log", level="error", msg=f"  ERROR (unexpected): {e}")
                 counts["error"] += 1
                 yield emit("progress", app=app_name, status="error", msg=str(e)[:120])
@@ -907,7 +915,7 @@ def api_analyze_scan():
             try:
                 for chunk in llm_ask_stream(prompt, model="fast"):
                     yield f"data: {json.dumps({'type': 'chunk', 'text': chunk})}\n\n"
-            except Exception as e:
+            except RuntimeError as e:
                 yield f"data: {json.dumps({'type': 'error', 'msg': str(e)})}\n\n"
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
@@ -997,8 +1005,8 @@ def api_logs_list():
                 "summary": data.get("summary", {}),
                 "app_count": len(data.get("apps_requested", [])),
             })
-        except Exception:
-            pass
+        except (OSError, ValueError):
+            log.warning("Skipping unreadable run log %s", f.name, exc_info=True)
     return jsonify(files)
 
 
@@ -1066,7 +1074,7 @@ def api_logs_get(run_id):
         return jsonify({"error": "Not found"}), 404
     try:
         return jsonify(json.loads(path.read_text()))
-    except Exception as e:
+    except (OSError, ValueError) as e:
         return jsonify({"error": str(e)}), 500
 
 

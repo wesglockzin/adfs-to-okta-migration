@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 okta_saml_import.py
 ====================
@@ -316,8 +315,10 @@ class OktaClient:
                 apps = self._get(f"/api/v1/policies/{policy['id']}/app?limit=500")
                 for app in apps:
                     result[app["id"]] = policy["name"]
-            except Exception:
-                pass
+            except (requests.RequestException, KeyError, ValueError):
+                logging.getLogger(__name__).warning(
+                    "Could not read apps for policy %s", policy.get("id"), exc_info=True
+                )
         return result
 
     def get_app_routing_rule_map(self) -> dict[str, str]:
@@ -331,8 +332,10 @@ class OktaClient:
                     for item in rule.get("conditions", {}).get("app", {}).get("include", []):
                         if item.get("type") == "APP" and item.get("id"):
                             result[item["id"]] = rule["name"]
-            except Exception:
-                pass
+            except (requests.RequestException, KeyError, ValueError):
+                logging.getLogger(__name__).warning(
+                    "Could not read rules for policy %s", policy.get("id"), exc_info=True
+                )
         return result
 
     def list_idp_routing_rules(self) -> list[dict]:
@@ -488,7 +491,7 @@ def import_app(folder: Path, client: OktaClient, skip_certs: bool, skip_signing_
     config_path = config_files[0]
     try:
         cfg = parse_config(config_path)
-    except Exception as e:
+    except (OSError, ValueError, KeyError, IndexError) as e:
         log.error("Failed to parse %s: %s", config_path, e)
         return "error"
 

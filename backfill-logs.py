@@ -73,7 +73,7 @@ def main():
     for f in files:
         try:
             data = json.loads(f.read_text())
-        except Exception as e:
+        except (OSError, ValueError) as e:
             print(f"  SKIP {f.name}: parse error ({e})")
             continue
 
@@ -121,7 +121,7 @@ def main():
             for i in range(0, len(records), CHUNK):
                 la_post(ws_id, ws_key, log_type, records[i:i + CHUNK])
             print(f"  OK   {f.name}  run_id={run_id[:8]}…  records={len(records)}")
-        except Exception as e:
+        except (requests.RequestException, RuntimeError) as e:
             print(f"  FAIL {f.name}: {e}")
 
     print("Done. Note: LA ingestion may take a few minutes to surface in queries.")

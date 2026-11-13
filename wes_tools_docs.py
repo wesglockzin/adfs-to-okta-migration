@@ -130,8 +130,10 @@ def register_howto(app: Flask, *, tool_name: str, howto_filename: str = "HOWTO.m
         howto_path = Path(app.root_path) / howto_filename
         if not howto_path.exists():
             return (
-                f"<h1>HOWTO.md not found</h1><p>Looked at: <code>{howto_path}</code></p>"
-                f"<p>Each tool ships its own <code>{howto_filename}</code> next to <code>app.py</code>.</p>",
+                (
+                    f"<h1>HOWTO.md not found</h1><p>Looked at: <code>{howto_path}</code></p>"
+                    f"<p>Each tool ships its own <code>{howto_filename}</code> next to <code>app.py</code>.</p>"
+                ),
                 500,
             )
 
