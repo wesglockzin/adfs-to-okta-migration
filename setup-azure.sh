@@ -6,9 +6,8 @@
 # Analytics Reader role on that workspace so the /logs page can query KQL.
 #
 # Required env vars (or interactive prompts):
-#   OKTA_ENVIRONMENTS          (name=URL,... ; the token secrets below assume the
-#                               names dev, stg and prod; edit them for other names)
-#   OKTA_DEV_TOKEN, OKTA_STG_TOKEN, OKTA_PROD_TOKEN
+#   OKTA_ENVIRONMENTS          (name=URL,... ; any number of names)
+#   OKTA_<NAME>_API_TOKEN      (one per name in OKTA_ENVIRONMENTS; prompted if unset)
 #   OIDC_CLIENT_ID_VAL         (PROD Okta "Admin SSO App" app client_id)
 #   OIDC_CLIENT_SECRET_VAL     (PROD Okta "Admin SSO App" app client_secret)
 #   OIDC_ISSUER_VAL            (PROD Okta authorization-server issuer URL)
@@ -57,18 +56,33 @@ ACR_PASSWORD=$(az acr credential show --name "$ACR" --query "passwords[0].value"
 # ---------------------------------------------------------------------------
 # Collect secrets
 # ---------------------------------------------------------------------------
-[ -z "${OKTA_DEV_TOKEN:-}" ]  && read -srp "Enter OKTA DEV  API token: "  OKTA_DEV_TOKEN  && echo
-[ -z "${OKTA_STG_TOKEN:-}" ]  && read -srp "Enter OKTA STG  API token: "  OKTA_STG_TOKEN  && echo
-[ -z "${OKTA_PROD_TOKEN:-}" ] && read -srp "Enter OKTA PROD API token: " OKTA_PROD_TOKEN && echo
+: "${OKTA_ENVIRONMENTS:?set OKTA_ENVIRONMENTS (name=URL,...) first}"
+
+# One token per name in OKTA_ENVIRONMENTS, any number of them. The token
+# variable and the app setting use the same name rule as settings.py:
+# OKTA_<NAME>_API_TOKEN, with every character outside A-Z and 0-9 as "_".
+OKTA_SECRETS=()
+OKTA_ENV_VARS=()
+IFS=',' read -ra OKTA_ENTRIES <<< "$OKTA_ENVIRONMENTS"
+for entry in "${OKTA_ENTRIES[@]}"; do
+  env_name=$(echo "${entry%%=*}" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+  [ -z "$env_name" ] && continue
+  token_var="OKTA_$(echo "$env_name" | tr '[:lower:]' '[:upper:]' | sed -E 's/[^A-Z0-9]/_/g')_API_TOKEN"
+  secret_name="okta-$(echo "$env_name" | sed -E 's/[^a-z0-9]+/-/g')-token"
+  if [ -z "${!token_var:-}" ]; then
+    read -srp "Enter Okta API token for '$env_name' ($token_var): " "$token_var"
+    echo
+  fi
+  OKTA_SECRETS+=("$secret_name=${!token_var}")
+  OKTA_ENV_VARS+=("$token_var=secretref:$secret_name")
+done
 [ -z "${OIDC_CLIENT_ID_VAL:-}" ]     && read -srp "Enter OIDC client_id: "     OIDC_CLIENT_ID_VAL  && echo
 [ -z "${OIDC_CLIENT_SECRET_VAL:-}" ] && read -srp "Enter OIDC client_secret: " OIDC_CLIENT_SECRET_VAL && echo
 [ -z "${OIDC_ISSUER_VAL:-}" ]        && read -rp  "Enter OIDC issuer URL: "    OIDC_ISSUER_VAL
 [ -z "${FLASK_SECRET_KEY_VAL:-}" ]   && FLASK_SECRET_KEY_VAL=$(python3 -c "import secrets; print(secrets.token_hex(32))")
 
 SECRETS=(
-  "okta-dev-token=$OKTA_DEV_TOKEN"
-  "okta-stg-token=$OKTA_STG_TOKEN"
-  "okta-prod-token=$OKTA_PROD_TOKEN"
+  "${OKTA_SECRETS[@]}"
   "flask-secret-key=$FLASK_SECRET_KEY_VAL"
   "oidc-client-id=$OIDC_CLIENT_ID_VAL"
   "oidc-client-secret=$OIDC_CLIENT_SECRET_VAL"
@@ -76,10 +90,8 @@ SECRETS=(
   "la-workspace-key=$LA_WORKSPACE_KEY"
 )
 ENV_VARS=(
-  "OKTA_ENVIRONMENTS=${OKTA_ENVIRONMENTS:?set OKTA_ENVIRONMENTS (name=URL,...) first}"
-  "OKTA_DEV_API_TOKEN=secretref:okta-dev-token"
-  "OKTA_STG_API_TOKEN=secretref:okta-stg-token"
-  "OKTA_PROD_API_TOKEN=secretref:okta-prod-token"
+  "OKTA_ENVIRONMENTS=$OKTA_ENVIRONMENTS"
+  "${OKTA_ENV_VARS[@]}"
   "FLASK_SECRET_KEY=secretref:flask-secret-key"
   "OIDC_CLIENT_ID=secretref:oidc-client-id"
   "OIDC_CLIENT_SECRET=secretref:oidc-client-secret"

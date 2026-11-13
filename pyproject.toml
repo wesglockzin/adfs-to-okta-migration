@@ -36,8 +36,7 @@ py-modules = [
     "okta_saml_import",
     "settings",
     "setup_tokens",
-    "wes_tools_docs",
-    "wes_tools_http",
+    "howto",
 ]
 
 # gunicorn is the container's server process (see Dockerfile CMD); it is never imported.
@@ -60,6 +59,4 @@ exclude = [
     "llm_client.py",
     "okta_saml_import.py",
     "setup_tokens.py",
-    "wes_tools_docs.py",
-    "wes_tools_http.py",
 ]

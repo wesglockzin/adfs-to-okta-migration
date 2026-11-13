@@ -106,7 +106,7 @@ from settings import (
     same_origin,
     split_list,
 )
-from wes_tools_docs import register_howto
+from howto import register_howto
 
 # Errors an Okta call or a config parse can raise; anything else is a bug and
 # should surface instead of being reported as an Okta/parse failure.
@@ -1073,9 +1073,10 @@ def api_logs_list():
 @app.route("/api/logs/<run_id>")
 def api_logs_get(run_id):
     """Full event detail for one run."""
-    if not re.fullmatch(r"[A-Za-z0-9_.-]+", run_id):
-        return jsonify({"error": "Invalid run id"}), 400
     if LA_QUERY_ENABLED:
+        # The id goes into a KQL string, so it must be plain characters.
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", run_id):
+            return jsonify({"error": "Invalid run id"}), 400
         try:
             # Fetch all events + summary for this run
             kql = (
@@ -1134,7 +1135,7 @@ def api_logs_get(run_id):
     path = (LOG_DIR / run_id).resolve()
     if not path.is_relative_to(LOG_DIR.resolve()):
         return jsonify({"error": "Invalid filename"}), 400
-    if not path.exists():
+    if not path.is_file():
         return jsonify({"error": "Not found"}), 404
     try:
         return jsonify(json.loads(path.read_text()))

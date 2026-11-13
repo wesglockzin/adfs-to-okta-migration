@@ -367,6 +367,53 @@ def test_run_detail_rejects_query_injection_in_run_id(failing_okta, monkeypatch)
     assert queries == []
 
 
+def test_local_run_log_is_served_and_escapes_are_refused(failing_okta, monkeypatch, tmp_path):
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (logs / "import_okta prod_2026-11-13.json").write_text('{"run": 1}')
+    (tmp_path / "secret.json").write_text("{}")
+    monkeypatch.setattr(failing_okta, "LOG_DIR", logs)
+    monkeypatch.setattr(failing_okta, "LA_QUERY_ENABLED", False)
+    client = failing_okta.app.test_client()
+    ok = client.get("/api/logs/import_okta%20prod_2026-11-13.json")
+    assert ok.status_code == 200
+    assert ok.get_json() == {"run": 1}
+    assert client.get("/api/logs/..").status_code == 400
+    assert client.get("/api/logs/.").status_code == 404
+    assert client.get("/api/logs/missing.json").status_code == 404
+
+
+def test_sibling_folder_with_same_prefix_is_not_a_run_log(failing_okta, monkeypatch, tmp_path):
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (tmp_path / "logs_other").mkdir()
+    (tmp_path / "logs_other" / "x.json").write_text("{}")
+    monkeypatch.setattr(failing_okta, "LOG_DIR", logs)
+    monkeypatch.setattr(failing_okta, "LA_QUERY_ENABLED", False)
+    resp = failing_okta.app.test_client().get("/api/logs/..%2Flogs_other%2Fx.json")
+    assert resp.status_code in (400, 404)
+
+
+def test_environment_name_needing_encoding_reaches_policies_intact(load_app, monkeypatch):
+    module = load_app(
+        AUTH_MODE="none", OKTA_ENVIRONMENTS="a&b=https://a.example.test"
+    )
+    seen = []
+
+    def fake_token(name):
+        seen.append(name)
+        return "fake"
+
+    monkeypatch.setattr(module, "OktaClient", FailingOkta)
+    monkeypatch.setattr(module, "get_token", fake_token)
+    client = module.app.test_client()
+    page = client.get("/").get_data(as_text=True)
+    assert "?env=${encodeURIComponent(env)}" in page
+    assert page.count("encodeURIComponent(env)") >= 2
+    client.get("/api/policies?env=a%26b")
+    assert seen == ["OKTA_A_B_API_TOKEN"]
+
+
 def test_run_history_from_log_analytics_carries_updated_count(
     failing_okta, monkeypatch
 ):

@@ -37,9 +37,24 @@ import requests
 from dotenv import load_dotenv
 
 from settings import ConfigError, parse_okta_environments
-from wes_tools_http import make_session
 
 APP_VERSION = "1.0.0"
+
+
+def make_session(tool_name: str, tool_version: str) -> requests.Session:
+    """Return a requests.Session with a User-Agent and a JSON Accept header.
+
+    Auth headers stay with the caller.
+    """
+    session = requests.Session()
+    session.headers.update(
+        {
+            "User-Agent": f"{tool_name}/{tool_version}",
+            "Accept": "application/json",
+        }
+    )
+    return session
+
 
 # ---------------------------------------------------------------------------
 # Environment config — one source: the OKTA_ENVIRONMENTS setting

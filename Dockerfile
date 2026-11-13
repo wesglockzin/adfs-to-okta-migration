@@ -12,7 +12,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py okta_saml_import.py llm_client.py settings.py wes_tools_http.py wes_tools_docs.py HOWTO.md ./
+COPY app.py okta_saml_import.py llm_client.py settings.py howto.py HOWTO.md ./
 COPY templates ./templates
 COPY scripts ./scripts
 

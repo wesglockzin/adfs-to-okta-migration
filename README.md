@@ -140,13 +140,11 @@ Real, known, in the order I intend to fix them.
   resolved from shared storage.
 - **No lockfile yet**; dependencies have version ranges only. Several
   legacy modules are still excluded from the formatter (`pyproject.toml`).
-- **`wes_tools_http.py` and `wes_tools_docs.py` are local copies** with no
-  upstream package; they are maintained in this repository.
 - **Apps whose ADFS assignment can't be parsed default to Everyone** on
   import (Custom Policy trusts, lookup errors). The scan flags them for
   review; the import does not yet refuse them.
-- **`run_id` is interpolated into the Log Analytics query** without
-  validation; it should be checked as 32-hex before use.
+- **`run_id` is checked against a character set**, not strictly as 32-hex, so
+  that local-development log file names still open.
 - **Duplicate-label lookup is a prefix search** (`?q=`, 10 results), so an
   org with many similar labels can miss an exact match and create a duplicate.
 - The AI panel's HTML is built with `innerHTML`; app names from the export

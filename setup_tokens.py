@@ -35,7 +35,7 @@ log = logging.getLogger("setup_tokens")
 
 def say(message: str = "") -> None:
     """Interactive prompt output for the person running the setup."""
-    print(message)
+    print(message)  # noqa: T201 - interactive prompt text, not diagnostics
 
 
 def main() -> None:
