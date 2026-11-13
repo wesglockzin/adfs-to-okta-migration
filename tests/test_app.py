@@ -16,6 +16,9 @@ SETTING_NAMES = (
 
 @pytest.fixture
 def load_app(monkeypatch):
+    # Keep a developer's local .env file from refilling the settings.
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *args, **kwargs: False)
+
     def load(**env):
         for name in SETTING_NAMES:
             monkeypatch.delenv(name, raising=False)
@@ -41,8 +44,14 @@ def test_app_refuses_to_start_without_auth_settings(load_app):
         load_app()
 
 
-def test_health_is_public_and_makes_no_outbound_calls(load_app):
+def test_health_is_public_and_makes_no_outbound_calls(load_app, monkeypatch):
     client = load_app(**OIDC_ENV).app.test_client()
+
+    def no_outbound(*args, **kwargs):
+        raise AssertionError("/health made an outbound call")
+
+    monkeypatch.setattr("urllib.request.urlopen", no_outbound)
+    monkeypatch.setattr("requests.Session.send", no_outbound)
     resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.get_json()["status"] == "ok"

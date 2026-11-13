@@ -26,6 +26,12 @@ def test_missing_model_names_the_setting(monkeypatch):
         llm_client.ask("hi")
 
 
+def test_health_reports_missing_settings_instead_of_raising():
+    result = llm_client.health()
+    assert result["status"] == "error"
+    assert "LLM_MODEL" in result["detail"] or "LLM_BASE_URL" in result["detail"]
+
+
 def test_http_error_reports_status_and_body(monkeypatch):
     monkeypatch.setenv("LLM_BASE_URL", "http://llm.example.test")
     err = urllib.error.HTTPError(

@@ -78,4 +78,4 @@ def test_dry_run_makes_no_calls():
 
 def test_user_agent_has_no_org_text():
     client = OktaClient("https://okta.example.test", "token")
-    assert "internal" not in client.session.headers["User-Agent"]
+    assert client.session.headers["User-Agent"] == "ADFSToOktaMigration/1.0.0"

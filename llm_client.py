@@ -199,12 +199,12 @@ def embed(text: str) -> list[float]:
 
 def health() -> dict:
     """Check the LLM server and confirm the configured models are available."""
-    models = {k: _model(k) for k in MODEL_VARS}
     try:
+        models = {k: _model(k) for k in MODEL_VARS}
         req = urllib.request.Request(f"{_base()}/api/tags")
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read())
-    except (urllib.error.URLError, OSError, ValueError) as e:
+    except (RuntimeError, urllib.error.URLError, OSError, ValueError) as e:
         return {"status": "error", "detail": str(e)}
     available = {m["name"] for m in data.get("models", [])}
     return {

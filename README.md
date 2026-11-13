@@ -64,7 +64,7 @@ missing or the server is down.
 | `scripts/Export-ADFSRelyingPartyTrusts.ps1` | The export script (runs on ADFS) |
 | `backfill-logs.py` | One-shot: push historical run logs into Log Analytics |
 | `setup_tokens.py` | Store per-environment Okta API tokens in the OS keyring |
-| `llm_client.py` | Local Ollama client for the AI panel |
+| `llm_client.py` | OpenAI-compatible LLM client for the AI panel (configured by environment variables) |
 | `templates/` | `index.html`, `logs.html` |
 | `Dockerfile`, `setup-azure.sh` | Container image and one-time Azure Container Apps setup |
 

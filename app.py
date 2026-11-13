@@ -1063,7 +1063,7 @@ def api_logs_get(run_id):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5001))
+    port = int(os.environ.get("PORT", "5001"))
     host = os.environ.get("HOST", "127.0.0.1")
     log.info("ADFS → Okta Migration v%s listening on %s:%d", APP_VERSION, host, port)
     app.run(host=host, port=port, debug=False, threaded=True)
