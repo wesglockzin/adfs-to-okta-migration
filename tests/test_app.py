@@ -367,7 +367,9 @@ def test_run_detail_rejects_query_injection_in_run_id(failing_okta, monkeypatch)
     assert queries == []
 
 
-def test_local_run_log_is_served_and_escapes_are_refused(failing_okta, monkeypatch, tmp_path):
+def test_local_run_log_is_served_and_escapes_are_refused(
+    failing_okta, monkeypatch, tmp_path
+):
     logs = tmp_path / "logs"
     logs.mkdir()
     (logs / "import_okta prod_2026-11-13.json").write_text('{"run": 1}')
@@ -383,7 +385,9 @@ def test_local_run_log_is_served_and_escapes_are_refused(failing_okta, monkeypat
     assert client.get("/api/logs/missing.json").status_code == 404
 
 
-def test_sibling_folder_with_same_prefix_is_not_a_run_log(failing_okta, monkeypatch, tmp_path):
+def test_sibling_folder_with_same_prefix_is_not_a_run_log(
+    failing_okta, monkeypatch, tmp_path
+):
     logs = tmp_path / "logs"
     logs.mkdir()
     (tmp_path / "logs_other").mkdir()
@@ -394,10 +398,10 @@ def test_sibling_folder_with_same_prefix_is_not_a_run_log(failing_okta, monkeypa
     assert resp.status_code in (400, 404)
 
 
-def test_environment_name_needing_encoding_reaches_policies_intact(load_app, monkeypatch):
-    module = load_app(
-        AUTH_MODE="none", OKTA_ENVIRONMENTS="a&b=https://a.example.test"
-    )
+def test_environment_name_needing_encoding_reaches_policies_intact(
+    load_app, monkeypatch
+):
+    module = load_app(AUTH_MODE="none", OKTA_ENVIRONMENTS="a&b=https://a.example.test")
     seen = []
 
     def fake_token(name):

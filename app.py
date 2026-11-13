@@ -93,6 +93,7 @@ def get_token(var_name: str) -> str:
 load_dotenv(Path(__file__).parent / ".env")
 
 sys.path.insert(0, str(Path(__file__).parent))
+from howto import register_howto
 from okta_saml_import import (
     OktaClient,
     get_okta_environments,
@@ -106,7 +107,6 @@ from settings import (
     same_origin,
     split_list,
 )
-from howto import register_howto
 
 # Errors an Okta call or a config parse can raise; anything else is a bug and
 # should surface instead of being reported as an Okta/parse failure.

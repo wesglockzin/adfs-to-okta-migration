@@ -106,7 +106,9 @@ _PAGE_TEMPLATE = """\
 """
 
 
-def register_howto(app: Flask, *, tool_name: str, howto_filename: str = "HOWTO.md") -> None:
+def register_howto(
+    app: Flask, *, tool_name: str, howto_filename: str = "HOWTO.md"
+) -> None:
     """Mount /howto on this Flask app, rendering HOWTO.md as a styled page.
 
     The file is read on every request, so edits show up on refresh.
