@@ -79,8 +79,12 @@ def test_login_keeps_relative_next(load_app):
         assert sess["post_login_redirect"] == "/logs"
 
 
-@pytest.mark.parametrize("failure", [ValueError("bad line"), TimeoutError("slow"), IndexError("shape")])
-def test_analyze_scan_reports_stream_failures_and_finishes(load_app, monkeypatch, failure):
+@pytest.mark.parametrize(
+    "failure", [ValueError("bad line"), TimeoutError("slow"), IndexError("shape")]
+)
+def test_analyze_scan_reports_stream_failures_and_finishes(
+    load_app, monkeypatch, failure
+):
     module = load_app(AUTH_MODE="none")
 
     def broken_stream(prompt, model=None):
