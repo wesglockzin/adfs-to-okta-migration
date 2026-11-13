@@ -49,8 +49,17 @@ import requests as req_lib
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 from flask import (
-    Flask, jsonify, redirect, render_template, render_template_string,
-    request, Response, send_file, session, stream_with_context, url_for,
+    Flask,
+    Response,
+    jsonify,
+    redirect,
+    render_template,
+    render_template_string,
+    request,
+    send_file,
+    session,
+    stream_with_context,
+    url_for,
 )
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
@@ -73,7 +82,7 @@ def get_token(var_name: str) -> str:
             val = _keyring.get_password(KEYRING_SERVICE, var_name)
             if val:
                 return val.strip()
-        except Exception:  # noqa: BLE001 - keyring backends raise varied errors
+        except Exception:
             # Containers have no keyring backend — fall through to env vars.
             log.debug("keyring lookup failed for %s; using environment", var_name, exc_info=True)
     return os.environ.get(var_name, "").strip()
@@ -735,14 +744,14 @@ def api_import():
                 if policy_id:
                     try:
                         client.assign_policy_to_app(okta_id, policy_id)
-                        yield emit("log", level="info", msg=f"  Auth policy assigned")
+                        yield emit("log", level="info", msg="  Auth policy assigned")
                     except req_lib.HTTPError as e:
                         body = e.response.text if e.response is not None else str(e)
                         yield emit("log", level="warn", msg=f"  Error assigning policy: {body}")
                 if routing_rule_id and routing_policy_id:
                     try:
                         client.add_app_to_routing_rule(routing_policy_id, routing_rule_id, okta_id)
-                        yield emit("log", level="info", msg=f"  IDP routing rule assigned")
+                        yield emit("log", level="info", msg="  IDP routing rule assigned")
                     except req_lib.HTTPError as e:
                         body = e.response.text if e.response is not None else str(e)
                         yield emit("log", level="warn", msg=f"  Error assigning routing rule: {body}")
@@ -760,7 +769,7 @@ def api_import():
                     if grp:
                         try:
                             client.assign_group_to_app(okta_id, grp["id"])
-                            yield emit("log", level="info", msg=f"  Assigned group 'Everyone'")
+                            yield emit("log", level="info", msg="  Assigned group 'Everyone'")
                         except req_lib.HTTPError as e:
                             body = e.response.text if e.response is not None else str(e)
                             yield emit("log", level="warn", msg=f"  Error assigning 'Everyone': {body}")
@@ -810,7 +819,7 @@ def api_import():
             if policy_id:
                 try:
                     client.assign_policy_to_app(okta_id, policy_id)
-                    yield emit("log", level="info", msg=f"  Auth policy assigned")
+                    yield emit("log", level="info", msg="  Auth policy assigned")
                 except req_lib.HTTPError as e:
                     body = e.response.text if e.response is not None else str(e)
                     yield emit("log", level="warn", msg=f"  Error assigning policy: {body}")
@@ -818,7 +827,7 @@ def api_import():
             if routing_rule_id and routing_policy_id:
                 try:
                     client.add_app_to_routing_rule(routing_policy_id, routing_rule_id, okta_id)
-                    yield emit("log", level="info", msg=f"  IDP routing rule assigned")
+                    yield emit("log", level="info", msg="  IDP routing rule assigned")
                 except req_lib.HTTPError as e:
                     body = e.response.text if e.response is not None else str(e)
                     yield emit("log", level="warn", msg=f"  Error assigning routing rule: {body}")
@@ -917,9 +926,10 @@ def api_analyze_scan():
 def _query_la(kql: str, days: int = 365) -> list[dict]:
     """Run a KQL query against the LA workspace via the Monitor Query SDK
     using the Container App's managed identity. Returns a list of row dicts."""
+    from datetime import timedelta
+
     from azure.identity import DefaultAzureCredential
     from azure.monitor.query import LogsQueryClient
-    from datetime import timedelta
 
     cred = DefaultAzureCredential()
     client = LogsQueryClient(cred)

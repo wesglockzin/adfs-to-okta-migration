@@ -23,7 +23,9 @@ def resolve_auth_mode(env: Mapping[str, str]) -> str:
         return "none"
     if mode != "oidc":
         raise ConfigError(f"AUTH_MODE must be 'oidc' or 'none', got {mode!r}")
-    missing = [n for n in (*OIDC_VARS, "FLASK_SECRET_KEY") if not env.get(n, "").strip()]
+    missing = [
+        n for n in (*OIDC_VARS, "FLASK_SECRET_KEY") if not env.get(n, "").strip()
+    ]
     if missing:
         raise ConfigError(
             "Missing required setting(s): "

@@ -21,7 +21,7 @@ import json
 import os
 import urllib.error
 import urllib.request
-from typing import Generator
+from collections.abc import Generator
 
 # ── Config ────────────────────────────────────────────────────────────────────
 # No defaults: the server URL and model names must be set in the environment.
@@ -98,8 +98,7 @@ def _post_stream(path: str, payload: dict) -> Generator[str, None, None]:
                 line = raw_line.decode().strip()
                 if not line or line == "data: [DONE]":
                     continue
-                if line.startswith("data: "):
-                    line = line[6:]
+                line = line.removeprefix("data: ")
                 chunk = json.loads(line)
                 delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
                 if delta:
