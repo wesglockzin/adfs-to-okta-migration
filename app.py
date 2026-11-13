@@ -915,7 +915,9 @@ def api_analyze_scan():
             try:
                 for chunk in llm_ask_stream(prompt, model="fast"):
                     yield f"data: {json.dumps({'type': 'chunk', 'text': chunk})}\n\n"
-            except RuntimeError as e:
+            except (RuntimeError, OSError, ValueError, IndexError) as e:
+                # Streaming can fail on timeouts, dropped connections or a malformed line.
+                log.warning("LLM stream failed: %s", e)
                 yield f"data: {json.dumps({'type': 'error', 'msg': str(e)})}\n\n"
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 

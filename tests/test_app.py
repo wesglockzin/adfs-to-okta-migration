@@ -33,9 +33,9 @@ def load_app(monkeypatch):
 
 OIDC_ENV = {
     "OIDC_ISSUER": "https://issuer.example.test",
-    "OIDC_CLIENT_ID": "id",
-    "OIDC_CLIENT_SECRET": "secret",
-    "FLASK_SECRET_KEY": "test-key",
+    "OIDC_CLIENT_ID": "test-id-not-real",
+    "OIDC_CLIENT_SECRET": "test-secret-not-real",
+    "FLASK_SECRET_KEY": "test-key-not-real",
 }
 
 
@@ -77,6 +77,25 @@ def test_login_keeps_relative_next(load_app):
     client.get("/login?next=/logs")
     with client.session_transaction() as sess:
         assert sess["post_login_redirect"] == "/logs"
+
+
+@pytest.mark.parametrize("failure", [ValueError("bad line"), TimeoutError("slow"), IndexError("shape")])
+def test_analyze_scan_reports_stream_failures_and_finishes(load_app, monkeypatch, failure):
+    module = load_app(AUTH_MODE="none")
+
+    def broken_stream(prompt, model=None):
+        yield "partial"
+        raise failure
+
+    monkeypatch.setattr(module, "LLM_AVAILABLE", True)
+    monkeypatch.setattr(module, "llm_ask_stream", broken_stream)
+    resp = module.app.test_client().post(
+        "/api/analyze-scan",
+        json={"results": [{"app_name": "App", "requires_review": True}]},
+    )
+    body = resp.get_data(as_text=True)
+    assert '"type": "error"' in body
+    assert body.rstrip().endswith('"type": "done"}')
 
 
 def test_auth_mode_none_leaves_gate_open(load_app):
