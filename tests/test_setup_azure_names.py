@@ -9,9 +9,7 @@ SCRIPT = Path(__file__).resolve().parent.parent / "setup-azure.sh"
 
 
 def test_script_trims_only_the_ends_of_environment_names():
-    line = next(
-        ln for ln in SCRIPT.read_text().splitlines() if "env_name=$(echo" in ln
-    )
+    line = next(ln for ln in SCRIPT.read_text().splitlines() if "env_name=$(echo" in ln)
     assert "tr -d '[:space:]'" not in line
 
 
