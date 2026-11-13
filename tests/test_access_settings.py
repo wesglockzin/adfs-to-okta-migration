@@ -11,10 +11,15 @@ from settings import (
 
 def test_okta_environments_any_length_with_derived_token_names():
     envs = parse_okta_environments(
-        {"OKTA_ENVIRONMENTS": "dev=https://a.example.test/, qa-2=https://b.example.test"}
+        {
+            "OKTA_ENVIRONMENTS": "dev=https://a.example.test/, qa-2=https://b.example.test"
+        }
     )
     assert list(envs) == ["dev", "qa-2"]
-    assert envs["dev"] == {"url": "https://a.example.test", "token_var": "OKTA_DEV_API_TOKEN"}
+    assert envs["dev"] == {
+        "url": "https://a.example.test",
+        "token_var": "OKTA_DEV_API_TOKEN",
+    }
     assert envs["qa-2"]["token_var"] == "OKTA_QA_2_API_TOKEN"
 
 
@@ -23,7 +28,9 @@ def test_okta_environments_missing_names_the_setting():
         parse_okta_environments({})
 
 
-@pytest.mark.parametrize("value", ["dev", "dev=", "=https://a.example.test", "dev=ftp://x"])
+@pytest.mark.parametrize(
+    "value", ["dev", "dev=", "=https://a.example.test", "dev=ftp://x"]
+)
 def test_okta_environments_rejects_malformed_entries(value):
     with pytest.raises(ConfigError):
         parse_okta_environments({"OKTA_ENVIRONMENTS": value})

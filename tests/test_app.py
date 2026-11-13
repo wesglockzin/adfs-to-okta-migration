@@ -323,7 +323,9 @@ def test_scan_http_error_does_not_reach_client(failing_okta, tmp_path):
     assert OKTA_BODY not in resp.get_data(as_text=True)
 
 
-def test_import_http_error_is_streamed_without_body(failing_okta, monkeypatch, tmp_path):
+def test_import_http_error_is_streamed_without_body(
+    failing_okta, monkeypatch, tmp_path
+):
     folder = tmp_path / "app1"
     folder.mkdir()
     (folder / "x_config.txt").write_text("x")

@@ -52,7 +52,9 @@ def parse_okta_environments(env: Mapping[str, str]) -> dict[str, dict[str, str]]
         name, sep, url = item.strip().partition("=")
         name, url = name.strip().lower(), url.strip().rstrip("/")
         if not sep or not name or not url.startswith(("https://", "http://")):
-            raise ConfigError(f"OKTA_ENVIRONMENTS entry {item.strip()!r} must be name=URL")
+            raise ConfigError(
+                f"OKTA_ENVIRONMENTS entry {item.strip()!r} must be name=URL"
+            )
         token_var = "OKTA_" + re.sub(r"[^A-Z0-9]", "_", name.upper()) + "_API_TOKEN"
         result[name] = {"url": url, "token_var": token_var}
     return result
@@ -63,8 +65,9 @@ def split_list(value: str | None) -> list[str]:
     return [i.strip().lower() for i in (value or "").split(",") if i.strip()]
 
 
-def is_user_allowed(email: str, groups: list[str], allowed_users: list[str],
-                    allowed_groups: list[str]) -> bool:
+def is_user_allowed(
+    email: str, groups: list[str], allowed_users: list[str], allowed_groups: list[str]
+) -> bool:
     """True when no allow-list is set, or the user matches one of them."""
     if not allowed_users and not allowed_groups:
         return True
